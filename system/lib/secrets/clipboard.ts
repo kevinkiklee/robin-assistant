@@ -1,5 +1,5 @@
-import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
+import { type ExecFn, MAC_TOOLS, realExec, TOOL_ENV } from './mac-tools.ts';
 
 export interface ClipboardIO {
   read(): string;
@@ -12,23 +12,28 @@ function asString(s: string): string {
   return `"${s.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
 }
 
-export const macClipboard: ClipboardIO = {
-  read: () => execFileSync('pbpaste', [], { encoding: 'utf8' }),
-  clear: () => {
-    execFileSync('pbcopy', [], { input: '' });
-  },
-  notify: (title, body) => {
-    try {
-      execFileSync(
-        'osascript',
-        ['-e', `display notification ${asString(body)} with title ${asString(title)}`],
-        { stdio: 'ignore' },
-      );
-    } catch {
-      // A missed banner must not break the flow.
-    }
-  },
-};
+/** The pbpaste/pbcopy/osascript clipboard, run by absolute path (see mac-tools.ts). */
+export function macClipboardWith(exec: ExecFn): ClipboardIO {
+  return {
+    read: () => String(exec(MAC_TOOLS.pbpaste, [], { encoding: 'utf8', env: TOOL_ENV })),
+    clear: () => {
+      exec(MAC_TOOLS.pbcopy, [], { input: '', env: TOOL_ENV });
+    },
+    notify: (title, body) => {
+      try {
+        exec(
+          MAC_TOOLS.osascript,
+          ['-e', `display notification ${asString(body)} with title ${asString(title)}`],
+          { stdio: 'ignore', env: TOOL_ENV },
+        );
+      } catch {
+        // A missed banner must not break the flow.
+      }
+    },
+  };
+}
+
+export const macClipboard: ClipboardIO = macClipboardWith(realExec);
 
 export function hashText(s: string): string {
   return createHash('sha256').update(s).digest('hex');

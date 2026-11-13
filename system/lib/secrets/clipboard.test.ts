@@ -1,6 +1,12 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { type ClipboardIO, hashText, takeFreshCopy, waitForFreshCopy } from './clipboard.js';
+import {
+  type ClipboardIO,
+  hashText,
+  macClipboardWith,
+  takeFreshCopy,
+  waitForFreshCopy,
+} from './clipboard.js';
 
 const SHAPE = /^\S{16,}$/;
 const KEY = 'spk_test_abcdefghijklmnop';
@@ -70,4 +76,20 @@ test('waitForFreshCopy: times out', async () => {
   });
   assert.deepEqual(r, { ok: false, reason: 'timeout' });
   assert.equal(io.notes.length, 1);
+});
+
+test('macClipboard: pbpaste/pbcopy/osascript by absolute path with a fixed env', () => {
+  const calls: { file: string; env: unknown }[] = [];
+  const io = macClipboardWith((file, _args, opts) => {
+    calls.push({ file, env: opts.env });
+    return 'x';
+  });
+  io.read();
+  io.clear();
+  io.notify('t', 'b');
+  assert.deepEqual(
+    calls.map((c) => c.file),
+    ['/usr/bin/pbpaste', '/usr/bin/pbcopy', '/usr/bin/osascript'],
+  );
+  for (const c of calls) assert.deepEqual(c.env, { PATH: '/usr/bin:/bin' });
 });

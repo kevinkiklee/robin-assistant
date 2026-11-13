@@ -1,7 +1,7 @@
 // `robin secret …` — the agent-facing key manager. Everything printed here is
 // read by an AI agent, so no path prints a key value: fingerprints only.
 
-import { execFileSync, spawnSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -25,6 +25,7 @@ import {
   runPipe,
 } from '../../lib/secrets/deliveries.ts';
 import { readEnvFile } from '../../lib/secrets/env-file.ts';
+import { type ExecFn, MAC_TOOLS, realExec, TOOL_ENV } from '../../lib/secrets/mac-tools.ts';
 import { googleIntegrationFor } from '../../lib/secrets/recipes/google.ts';
 import { getRecipe, type Recipe, scriptHashes } from '../../lib/secrets/recipes/index.ts';
 import {
@@ -511,7 +512,8 @@ async function readValue(
         message: `Click Copy on the ${provider} tab`,
       });
       if (r.ok) return r.value;
-      if (a.op?.mode === 'get') throw new CliExit(1, 'No copy seen in 2 min; nothing saved.');
+      if (!a.op) throw new CliExit(1, 'No copy seen in 2 min.');
+      if (a.op.mode === 'get') throw new CliExit(1, 'No copy seen in 2 min; nothing saved.');
       throw new CliExit(
         1,
         `No copy seen in 2 min. ${liveKeyWarning(provider, name, opDate(a.op, now))}`,
@@ -686,7 +688,7 @@ async function cmdSet(ctx: Ctx, args: string[]): Promise<number> {
   for (const p of problems) d.out(`failed: ${p}`);
   if (win) d.out('next: close the tab');
   if (report.written.some((t) => t.kind === 'robin-env')) d.out('then: robin secret restart');
-  return report.failed.length || problems.length ? 1 : 0;
+  return report.failed.length || problems.length || report.unrecorded?.length ? 1 : 0;
 }
 
 // ── abort ────────────────────────────────────────────────────────────────
@@ -831,7 +833,7 @@ function cmdPipe(ctx: Ctx, args: string[]): number {
   if (value === undefined) throw new CliExit(1, `${name} is not in the vault`);
   ctx.values.push(value);
   // Operator-bound: an agent's own say-so (a flag) is not consent to send a key out.
-  const shown = argv.map((a) => (/^[\w@%+=:,./-]+$/.test(a) ? a : JSON.stringify(a))).join(' ');
+  const shown = argv.map(dialogWord).join(' ');
   const approved = d.confirm(
     'Robin: send a key to an outside service?',
     `Send ${name} on stdin to:\n\n${shown}\n\nOnly Send if you asked for this.`,
@@ -907,18 +909,41 @@ export function confirmScript(title: string, body: string): string {
   return `display dialog ${appleScriptString(body)} with title ${appleScriptString(title)} buttons {"Deny", "Send"} default button "Deny" cancel button "Deny" giving up after 120`;
 }
 
-/** Deny closes the dialog with error -128 (execFileSync throws) → false. */
-function macConfirm(title: string, body: string): boolean {
-  try {
-    const out = execFileSync('osascript', ['-e', confirmScript(title, body)], {
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'ignore'],
-      timeout: 130_000,
-    });
-    return /button returned:Send\b/.test(out) && !/gave up:true/.test(out);
-  } catch {
-    return false;
-  }
+/**
+ * The operator dialog via /usr/bin/osascript (absolute path, fixed env: a fake
+ * osascript on PATH must not be able to "click" Send). Deny closes the dialog
+ * with error -128 (exec throws) → false.
+ */
+export function macConfirmWith(exec: ExecFn): (title: string, body: string) => boolean {
+  return (title, body) => {
+    try {
+      const out = String(
+        exec(MAC_TOOLS.osascript, ['-e', confirmScript(title, body)], {
+          encoding: 'utf8',
+          stdio: ['ignore', 'pipe', 'ignore'],
+          timeout: 130_000,
+          env: TOOL_ENV,
+        }),
+      );
+      return /button returned:Send\b/.test(out) && !/gave up:true/.test(out);
+    } catch {
+      return false;
+    }
+  };
+}
+
+/**
+ * An argv word as the dialog shows it. Anything outside printable ASCII
+ * (bidi overrides, zero-width chars, newlines) is spelled `\uXXXX`, so the
+ * dialog can't be made to show a different command than the one that runs.
+ */
+export function dialogWord(a: string): string {
+  if (/^[\w@%+=:,./-]+$/.test(a)) return a;
+  const esc = a
+    .replace(/\\/g, '\\\\')
+    .replace(/"/g, '\\"')
+    .replace(/[^\x20-\x7e]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`);
+  return `"${esc}"`;
 }
 
 async function readAllStdin(): Promise<string> {
@@ -945,7 +970,7 @@ async function withDefaults(deps: Partial<SecretDeps>): Promise<SecretDeps> {
     },
     sleep: (ms) => new Promise<void>((r) => setTimeout(r, ms)),
     readStdin: readAllStdin,
-    confirm: macConfirm,
+    confirm: macConfirmWith(realExec),
     ...deps,
     userData,
   };

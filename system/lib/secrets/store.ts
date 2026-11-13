@@ -1,7 +1,7 @@
-import { execFileSync } from 'node:child_process';
 import { appendFileSync, chmodSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { readEnvFile, writeEnvKey } from './env-file.ts';
+import { type ExecFn, MAC_TOOLS, realExec, TOOL_ENV } from './mac-tools.ts';
 
 export function secretsPaths(userData: string): {
   vault: string;
@@ -62,17 +62,25 @@ export function setMaster(userData: string, name: string, value: string): 'saved
   return 'saved';
 }
 
-function defaultLaunchctlGetenv(n: string): string | undefined {
-  try {
-    const out = execFileSync('launchctl', ['getenv', n], {
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'ignore'],
-    }).trim();
-    return out || undefined;
-  } catch {
-    return undefined;
-  }
+/** `launchctl getenv`, run by absolute path (see mac-tools.ts). */
+export function launchctlGetenvWith(exec: ExecFn): (n: string) => string | undefined {
+  return (n) => {
+    try {
+      const out = String(
+        exec(MAC_TOOLS.launchctl, ['getenv', n], {
+          encoding: 'utf8',
+          stdio: ['ignore', 'pipe', 'ignore'],
+          env: TOOL_ENV,
+        }),
+      ).trim();
+      return out || undefined;
+    } catch {
+      return undefined;
+    }
+  };
 }
+
+const defaultLaunchctlGetenv = launchctlGetenvWith(realExec);
 
 /** Where an existing definition of `name` would override the one we deliver, or null. */
 export function findShadowing(

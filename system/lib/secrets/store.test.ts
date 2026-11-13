@@ -12,6 +12,7 @@ import {
   getMaster,
   importRobinEnv,
   isSecretClassName,
+  launchctlGetenvWith,
   secretsPaths,
   setMaster,
 } from './store.ts';
@@ -123,5 +124,25 @@ describe('appendLog', () => {
     const allowed = new Set(['op', 'provider', 'name', 'fingerprint', 'session', 'ts']);
     for (const k of Object.keys(line)) assert.ok(allowed.has(k), k);
     assert.ok(line.ts);
+  });
+});
+
+describe('launchctlGetenvWith', () => {
+  it('runs /bin/launchctl by absolute path with a fixed env', () => {
+    const calls: { file: string; args: string[]; env: unknown }[] = [];
+    const get = launchctlGetenvWith((file, args, opts) => {
+      calls.push({ file, args, env: opts.env });
+      return 'value\n';
+    });
+    assert.equal(get('SOME_TEST_NAME'), 'value');
+    assert.deepEqual(calls, [
+      {
+        file: '/bin/launchctl',
+        args: ['getenv', 'SOME_TEST_NAME'],
+        env: { PATH: '/usr/bin:/bin' },
+      },
+    ]);
+    const empty = launchctlGetenvWith(() => '\n');
+    assert.equal(empty('SOME_TEST_NAME'), undefined);
   });
 });

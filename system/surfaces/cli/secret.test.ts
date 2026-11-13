@@ -1,14 +1,6 @@
 import assert from 'node:assert/strict';
 import type { spawnSync } from 'node:child_process';
-import {
-  chmodSync,
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  statSync,
-  writeFileSync,
-} from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -28,6 +20,8 @@ import {
   appleScriptString,
   beginLines,
   confirmScript,
+  dialogWord,
+  macConfirmWith,
   runSecretCommand,
   type SecretDeps,
 } from './secret.ts';
@@ -679,14 +673,12 @@ test('set: target written but registry write fails → delivered but not recorde
   await openWindow(h);
   h.clip.text = VALUE;
   const envLocal = join(h.root, '.env.local');
-  const runtime = join(h.userData, 'state', 'runtime');
-  chmodSync(runtime, 0o500); // registry (and window/op/log) writes fail
-  try {
-    await run(h, ['set', 'SPK_TEST_KEY', '--to', envLocal]);
-  } finally {
-    chmodSync(runtime, 0o700);
-  }
+  // Only the registry write fails: its tmp path is taken by a directory.
+  mkdirSync(`${secretsPaths(h.userData).deliveries}.tmp-${process.pid}`);
+  assert.equal(await run(h, ['set', 'SPK_TEST_KEY', '--to', envLocal]), 1);
+  assert.equal(readWindow(h.userData)?.status, 'saved');
   const out = h.output();
+  assert.doesNotMatch(out, /^failed:/m);
   assert.match(readFileSync(envLocal, 'utf8'), new RegExp(`SPK_TEST_KEY=${VALUE}`));
   assert.match(out, /delivered: 1 files/);
   assert.match(out, /delivered but not recorded \(a rotation won't update it\): \S+\.env\.local/);
@@ -702,4 +694,40 @@ test('confirm dialog script: escapes \\ and ", Deny is default and cancel, gives
     /buttons \{"Deny", "Send"\} default button "Deny" cancel button "Deny" giving up after 120$/,
   );
   assert.ok(script.includes('"say \\"hi\\""'));
+});
+
+test('set --wait timeout with no op at all: only "No copy seen in 2 min."', async () => {
+  const h = harness();
+  h.clip.text = 'already there before the wait started';
+  assert.equal(await run(h, ['set', 'SPK_TEST_KEY', '--wait']), 1);
+  assert.equal(h.output(), 'No copy seen in 2 min.');
+});
+
+test('pipe dialog: bidi and zero-width chars in argv are shown escaped', async () => {
+  const h = harness();
+  setMaster(h.userData, 'SPK_TEST_KEY', VALUE);
+  h.approve = false;
+  await run(h, ['pipe', 'SPK_TEST_KEY', '--', 'gh', 'secret', 'set', 'safe\u202Ehs.lit\u200Bcat']);
+  const body = h.confirms[0].body;
+  assert.ok(!/[^\x20-\x7e\n]/.test(body), 'only printable ASCII (and newlines) in the dialog');
+  assert.ok(body.includes('"safe\\u202ehs.lit\\u200bcat"'));
+  assert.equal(dialogWord('a\u2066b'), '"a\\u2066b"');
+  assert.equal(dialogWord('plain-word'), 'plain-word');
+});
+
+test('default confirm runs /usr/bin/osascript with a fixed env, Send only', () => {
+  const calls: { file: string; env: unknown }[] = [];
+  const confirm = (out: string | Error) =>
+    macConfirmWith((file, _args, opts) => {
+      calls.push({ file, env: opts.env });
+      if (out instanceof Error) throw out;
+      return out;
+    });
+  assert.equal(confirm('button returned:Send, gave up:false')('t', 'b'), true);
+  assert.equal(confirm('button returned:, gave up:true')('t', 'b'), false);
+  assert.equal(confirm(new Error('User canceled. (-128)'))('t', 'b'), false);
+  for (const c of calls) {
+    assert.equal(c.file, '/usr/bin/osascript');
+    assert.deepEqual(c.env, { PATH: '/usr/bin:/bin' });
+  }
 });
