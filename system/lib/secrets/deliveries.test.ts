@@ -253,3 +253,14 @@ test('pruneMissing: removes targets whose dir is gone', () => {
   assert.equal(removed.length, 1);
   assert.equal(readDeliveries(ud).K.length, 2);
 });
+
+test('redeliverFileTargets: skip leaves a target unwritten and reports it failed', () => {
+  const ud = tmp();
+  const a = tmp();
+  const t: DeliveryTarget = { kind: 'env-local', path: join(a, '.env.local'), var: 'K' };
+  addDelivery(ud, 'K', t);
+  const r = redeliverFileTargets(ud, 'K', VAL, { skip: () => 'shadowed by daemon.env' });
+  assert.deepEqual(r.failed, [{ target: t, error: 'shadowed by daemon.env' }]);
+  assert.equal(r.written.length, 0);
+  assert.equal(existsSync(t.path), false);
+});

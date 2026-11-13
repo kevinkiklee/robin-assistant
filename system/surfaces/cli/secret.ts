@@ -79,7 +79,7 @@ const WINDOW_MS = 120_000;
 const WAIT_MS = 120_000;
 const POLL_MS = 1_000;
 const OP_STALE_MS = 60 * 60_000;
-const WAIT_HINT = '(give the Bash call a timeout of at least 150000 ms)';
+const WAIT_HINT = '— give the Bash call a timeout of at least 150000 ms';
 const ALREADY_OPEN = 'A secret window is already open; run `robin secret abort` first.';
 
 const USAGE = `usage: robin secret <command>
@@ -243,17 +243,21 @@ function refuseUnignored(ctx: Ctx, targets: DeliveryTarget[]): void {
   }
 }
 
+/** Where an existing definition would override what `t` delivers, or null. */
+function shadowOf(ctx: Ctx, t: DeliveryTarget): string | null {
+  if (t.kind !== 'robin-env' && t.kind !== 'env-local') return null;
+  return findShadowing(t.var, {
+    env: ctx.d.env,
+    launchctlGetenv: ctx.d.launchctlGetenv,
+    daemonEnvPath: secretsPaths(ctx.d.userData).daemonEnv,
+    target: t.kind,
+  });
+}
+
 function refuseShadowed(ctx: Ctx, targets: DeliveryTarget[]): void {
-  const daemonEnvPath = secretsPaths(ctx.d.userData).daemonEnv;
   for (const t of targets) {
-    if (t.kind !== 'robin-env' && t.kind !== 'env-local') continue;
-    const loc = findShadowing(t.var, {
-      env: ctx.d.env,
-      launchctlGetenv: ctx.d.launchctlGetenv,
-      daemonEnvPath,
-      target: t.kind,
-    });
-    if (loc) {
+    const loc = shadowOf(ctx, t);
+    if (loc && (t.kind === 'robin-env' || t.kind === 'env-local')) {
       throw new CliExit(
         2,
         `refused: ${t.var} is also defined in the ${loc}, which would override the delivered value. Remove it there, then re-run.`,
@@ -303,12 +307,23 @@ export function beginLines(a: {
   const keyName = dashboardKeyName(name, now);
   const delivers = `delivers to: vault${targets.map((t) => `; ${describe(t)}`).join('')}`;
   if (!recipe) {
-    return [
-      `${provider} · manual · ${name}`,
+    // `mode` is 'get' / 'rotate' when begin was given --get / --rotate.
+    const head = `${provider} · manual${mode === 'manual' ? '' : ` ${mode}`} · ${name}`;
+    if (mode === 'get') {
+      return [
+        head,
+        delivers,
+        `No recipe for ${provider}. Get order: tabs_create, then robin secret arm --tab <id>; navigate the tab to the page that shows the key; robin secret set ${name} --wait ${WAIT_HINT}`,
+      ];
+    }
+    const lines = [
+      head,
       `dashboard key name: ${keyName}`,
       delivers,
       `No recipe for ${provider}. Drive the dashboard up to the reveal, ask for OK, then run: robin secret arm --tab <id>; click Create; robin secret set ${name} --wait ${WAIT_HINT}`,
     ];
+    if (mode === 'rotate') lines.push(ROTATE_CREATE_REVOKE);
+    return lines;
   }
   if (recipe.rotate === 'oauth') {
     const integration =
@@ -353,7 +368,7 @@ export function beginLines(a: {
     );
   } else {
     lines.push(
-      `next: open the url, fill the form, run precheck (must return {ok:true}), ask the operator for OK, then: robin secret arm --tab <id>; click ${roll && mode === 'rotate' ? 'Roll' : 'Create'}; run locateCopy and click its {x,y}; robin secret set ${name} --from-clipboard. ${fallback}`,
+      `next: open the url, fill the form, ${recipe.precheck !== undefined ? 'run precheck (must return {ok:true}), ' : ''}ask the operator for OK, then: robin secret arm --tab <id>; click ${roll && mode === 'rotate' ? 'Roll' : 'Create'}; run locateCopy and click its {x,y}; robin secret set ${name} --from-clipboard. ${fallback}`,
     );
   }
   return lines;
@@ -371,7 +386,11 @@ function cmdBegin(ctx: Ctx, args: string[]): number {
   const recipe = getRecipe(provider);
   const to = toTarget(p, name);
   let mode: SecretOp['mode'] = 'manual';
-  if (recipe) {
+  if (!recipe) {
+    // Manual --get mints nothing; manual --rotate mints like create.
+    if (p.flags.has('get')) mode = 'get';
+    else if (p.flags.has('rotate')) mode = 'rotate';
+  } else {
     const asked = p.flags.has('rotate') ? 'rotate' : p.flags.has('get') ? 'get' : undefined;
     mode = asked ?? (recipe.modes.includes('create') ? 'create' : recipe.modes[0]);
     if (!recipe.modes.includes(mode)) {
@@ -391,7 +410,8 @@ function cmdBegin(ctx: Ctx, args: string[]): number {
     ...(to ? [to] : []),
   ]);
   refuseUnignored(ctx, targets);
-  refuseShadowed(ctx, targets);
+  // Every recorded target of NAME gets the new value too, so check them all now.
+  refuseShadowed(ctx, [...targets, ...(readDeliveries(ctx.d.userData)[name] ?? [])]);
   writeOp(ctx.d.userData, { provider, name, mode, targets, startedAt: now.toISOString() });
   for (const l of beginLines({ recipe, provider, name, mode, targets, now })) ctx.d.out(l);
   return 0;
@@ -417,7 +437,10 @@ function cmdArm(ctx: Ctx, args: string[]): number {
   }
   const session = takeArmSession(userData, now);
   if (!session) {
-    throw new CliExit(2, 'arm must run from a Claude session with the secret hooks installed');
+    throw new CliExit(
+      2,
+      "arm must be run as a bare command exactly `robin secret arm --tab <id>` within 10 s of the guard recording it (no cd/&&, no --tab=); if hooks aren't installed run `robin secret install`",
+    );
   }
   if (session.tabId !== tab) {
     throw new CliExit(2, `The arm record is for tab ${session.tabId}, not ${tab}; nothing armed.`);
@@ -601,7 +624,23 @@ async function cmdSet(ctx: Ctx, args: string[]): Promise<number> {
   const newTargets = uniqueTargets([...(op?.targets ?? []), ...(to ? [to] : [])]);
   const recorded = readDeliveries(d.userData)[name] ?? [];
   refuseUnignored(ctx, newTargets);
-  refuseShadowed(ctx, [...newTargets, ...recorded]);
+  // After a mint (create / rotate / manual) the key already exists at the
+  // provider, so never refuse: save it, deliver what isn't shadowed, and
+  // report the rest. Otherwise refuse before the value is read.
+  const minted = op !== null && op.mode !== 'get';
+  const shadowed = new Map<string, string>();
+  if (minted) {
+    for (const t of uniqueTargets([...newTargets, ...recorded])) {
+      const loc = shadowOf(ctx, t);
+      if (loc) shadowed.set(JSON.stringify(t), loc);
+    }
+  } else {
+    refuseShadowed(ctx, [...newTargets, ...recorded]);
+  }
+  const shadowReason = (t: DeliveryTarget): string | undefined => {
+    const loc = shadowed.get(JSON.stringify(normalize(t)));
+    return loc ? `shadowed by ${loc}` : undefined;
+  };
 
   // No source flag and no window: deliver the stored value (never a stray clipboard).
   const source: Source = sources[0] ?? (win ? 'from-clipboard' : 'stored');
@@ -638,7 +677,7 @@ async function cmdSet(ctx: Ctx, args: string[]): Promise<number> {
   if (result === 'saved') {
     // Registry as it was: new targets are added below, so nothing is written twice.
     try {
-      const r = redeliverFileTargets(d.userData, name, value);
+      const r = redeliverFileTargets(d.userData, name, value, { skip: shadowReason });
       report.written.push(...r.written);
       report.missing.push(...r.missing);
       report.failed.push(...r.failed);
@@ -650,6 +689,11 @@ async function cmdSet(ctx: Ctx, args: string[]): Promise<number> {
   for (const t of newTargets) {
     if (recorded.some((x) => sameTarget(x, t))) continue;
     if (t.kind === 'pipe') continue;
+    const skip = shadowReason(t);
+    if (skip) {
+      report.failed.push({ target: t, error: skip });
+      continue;
+    }
     try {
       deliverOne(ctx, t, value);
     } catch (err) {

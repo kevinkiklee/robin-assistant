@@ -150,10 +150,12 @@ function targetDirGone(t: DeliveryTarget): boolean {
   );
 }
 
+/** `opts.skip` returns a reason to leave a target unwritten (reported as failed). */
 export function redeliverFileTargets(
   userData: string,
   name: string,
   value: string,
+  opts: { skip?: (t: DeliveryTarget) => string | undefined } = {},
 ): {
   written: DeliveryTarget[];
   missing: DeliveryTarget[];
@@ -167,8 +169,10 @@ export function redeliverFileTargets(
     pipes: [] as DeliveryTarget[],
   };
   for (const t of readDeliveries(userData)[name] ?? []) {
+    const skip = t.kind === 'pipe' ? undefined : opts.skip?.(t);
     if (t.kind === 'pipe') out.pipes.push(t);
     else if (targetDirGone(t)) out.missing.push(t);
+    else if (skip !== undefined) out.failed.push({ target: t, error: skip });
     else {
       try {
         deliverFileTarget(userData, t, value);

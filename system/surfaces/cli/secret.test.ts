@@ -166,17 +166,54 @@ test('set --get same value: already current, nothing written', async () => {
   assert.equal(h.clip.cleared, 1);
 });
 
-test('set: refuses a name shadowed by the shell', async () => {
+test('set without a mint: refuses a name shadowed by the shell, reads nothing', async () => {
   const h = harness({ env: { SPK_TEST_KEY: 'from the shell' } });
-  await openWindow(h);
-  h.clip.text = VALUE;
+  let reads = 0;
+  h.deps.readStdin = async () => {
+    reads++;
+    return `${VALUE}\n`;
+  };
   const envLocal = join(h.root, '.env.local');
-  const code = await run(h, ['set', 'SPK_TEST_KEY', '--to', envLocal]);
+  const code = await run(h, ['set', 'SPK_TEST_KEY', '--stdin', '--to', envLocal]);
   assert.equal(code, 2);
   assert.match(h.output(), /shell environment/);
+  assert.equal(reads, 0);
   assert.equal(getMaster(h.userData, 'SPK_TEST_KEY'), undefined);
   assert.equal(existsSync(envLocal), false);
-  assert.equal(h.clip.cleared, 0);
+});
+
+test('set after a mint: shadowing never refuses — saves, delivers the rest, reports failed, exit 1', async () => {
+  const h = harness();
+  const envLocal = join(h.root, 'proj', '.env.local');
+  mkdirSync(join(h.root, 'proj'));
+  await openWindow(h);
+  h.clip.text = VALUE;
+  const { addDelivery } = await import('../../lib/secrets/deliveries.ts');
+  addDelivery(h.userData, 'SPK_TEST_KEY', { kind: 'robin-env', var: 'SPK_TEST_KEY' });
+  // The shadow appears after begin (begin would have refused it).
+  h.deps.env = { SPK_TEST_KEY: 'from the shell' };
+  const code = await run(h, ['set', 'SPK_TEST_KEY', '--to', envLocal, '--as', 'APP_KEY']);
+  assert.equal(code, 1);
+  assert.equal(getMaster(h.userData, 'SPK_TEST_KEY'), VALUE);
+  assert.match(readFileSync(envLocal, 'utf8'), new RegExp(`^APP_KEY=${VALUE}$`, 'm'));
+  assert.equal(existsSync(secretsPaths(h.userData).robinEnv), false);
+  const out = h.output();
+  assert.match(out, /failed: Robin \.env SPK_TEST_KEY — shadowed by shell environment/);
+  assert.match(out, /delivered: 1 files/);
+  assert.doesNotMatch(out, /then: robin secret restart/);
+  assert.equal(readWindow(h.userData)?.status, 'saved');
+  assert.equal(readOp(h.userData), null);
+});
+
+test('begin: refuses up front when a recorded target of NAME is shadowed', async () => {
+  const h = harness();
+  const { addDelivery } = await import('../../lib/secrets/deliveries.ts');
+  addDelivery(h.userData, 'SPK_TEST_KEY', { kind: 'robin-env', var: 'SPK_TEST_KEY' });
+  mkdirSync(join(h.userData, 'config', 'secrets'), { recursive: true });
+  writeFileSync(secretsPaths(h.userData).daemonEnv, 'SPK_TEST_KEY=x\n');
+  assert.equal(await run(h, ['begin', 'acme', 'SPK_TEST_KEY']), 2);
+  assert.match(h.output(), /refused: SPK_TEST_KEY is also defined in the daemon\.env/);
+  assert.equal(readOp(h.userData), null);
 });
 
 test('set: refuses an un-ignored --to inside a repo, writes nothing', async () => {
@@ -341,7 +378,10 @@ test('arm without an arm-session record exits 2', async () => {
   await run(h, ['begin', 'acme', 'SPK_TEST_KEY']);
   const code = await run(h, ['arm', '--tab', '7']);
   assert.equal(code, 2);
-  assert.match(h.output(), /arm must run from a Claude session with the secret hooks installed/);
+  assert.match(
+    h.output(),
+    /arm must be run as a bare command exactly `robin secret arm --tab <id>` within 10 s of the guard recording it \(no cd\/&&, no --tab=\); if hooks aren't installed run `robin secret install`/,
+  );
   assert.equal(readWindow(h.userData), null);
 });
 
@@ -400,11 +440,17 @@ function rawWindow(h: Harness): void {
 
 test('abort: manual-mode window still warns (its flow clicks Create)', async () => {
   const h = harness();
-  await run(h, ['begin', 'acme', 'SPK_TEST_KEY', '--get']);
+  await run(h, ['begin', 'acme', 'SPK_TEST_KEY']);
   assert.equal(readOp(h.userData)?.mode, 'manual');
   rawWindow(h);
   assert.equal(await run(h, ['abort']), 0);
   assert.match(h.output(), /may be live and unsaved/);
+  // manual --get mints nothing, so no warning
+  const g = harness();
+  await run(g, ['begin', 'acme', 'SPK_TEST_KEY', '--get']);
+  rawWindow(g);
+  assert.equal(await run(g, ['abort']), 0);
+  assert.doesNotMatch(g.output(), /may be live/);
 });
 
 test('abort: get-mode window has no live-key warning', async () => {
@@ -755,4 +801,45 @@ test('install / uninstall: hooks pinned to this userData + rule file, under a te
   assert.equal(after.hooks.PostToolUse, undefined);
   assert.equal(existsSync(rule), false);
   assert.match(h.output(), /hooks: removed/);
+});
+
+test('begin manual --get: prints the get order; the op mints nothing', async () => {
+  const h = harness();
+  assert.equal(await run(h, ['begin', 'acme', 'SPK_TEST_KEY', '--get']), 0);
+  const out = h.output();
+  assert.match(out, /acme · manual get · SPK_TEST_KEY/);
+  assert.match(
+    out,
+    /tabs_create, then robin secret arm --tab <id>; navigate the tab to the page that shows the key; robin secret set SPK_TEST_KEY --wait — give the Bash call a timeout of at least 150000 ms/,
+  );
+  assert.doesNotMatch(out, /click Create|dashboard key name/);
+  assert.equal(readOp(h.userData)?.mode, 'get');
+});
+
+test('begin manual --rotate: create order plus the revoke guidance', async () => {
+  const h = harness();
+  assert.equal(await run(h, ['begin', 'acme', 'SPK_TEST_KEY', '--rotate']), 0);
+  const out = h.output();
+  assert.match(out, /acme · manual rotate · SPK_TEST_KEY/);
+  assert.match(out, /click Create; robin secret set SPK_TEST_KEY --wait/);
+  assert.match(out, /At the revoke step, list the dashboard's key NAMES \(never values\)/);
+  assert.equal(readOp(h.userData)?.mode, 'rotate');
+});
+
+test('beginLines: "run precheck" only when the recipe has one; wait hint has no parentheses', () => {
+  const args = {
+    provider: 'linear',
+    name: 'LINEAR_API_KEY',
+    mode: 'create' as const,
+    targets: [],
+    now: NOW,
+  };
+  const without = beginLines({ ...args, recipe: { ...linear, precheck: undefined } }).join('\n');
+  assert.doesNotMatch(without, /precheck/);
+  const withIt = beginLines({ ...args, recipe: { ...linear, precheck: 'return {ok:true}' } }).join(
+    '\n',
+  );
+  assert.match(withIt, /run precheck \(must return \{ok:true\}\)/);
+  assert.match(without, /--wait — give the Bash call a timeout of at least 150000 ms/);
+  assert.doesNotMatch(without, /\(give the Bash call/);
 });
