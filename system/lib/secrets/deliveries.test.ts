@@ -4,6 +4,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
   statSync,
@@ -49,6 +50,35 @@ test('deliverToEnvLocal: writes when ignored', () => {
   deliverToEnvLocal(p, 'X', 'v');
   assert.match(readFileSync(p, 'utf8'), /^X=v$/m);
   assert.equal(statSync(p).mode & 0o777, 0o600);
+});
+
+test('deliverToEnvLocal: never leaves a .bak-* beside the target (a .env.local pattern would not ignore it)', () => {
+  const dir = tmp();
+  gitInit(dir);
+  writeFileSync(join(dir, '.gitignore'), '.env.local\n');
+  const p = join(dir, '.env.local');
+  deliverToEnvLocal(p, 'X', VAL);
+  deliverToEnvLocal(p, 'X', `${VAL}2`);
+  assert.deepEqual(
+    readdirSync(dir).filter((f) => f.includes('.bak-')),
+    [],
+  );
+  assert.match(readFileSync(p, 'utf8'), new RegExp(`^X=${VAL}2$`, 'm'));
+});
+
+test('redeliverFileTargets: env-local re-delivery leaves no .bak-*', () => {
+  const ud = tmp();
+  const dir = tmp();
+  gitInit(dir);
+  writeFileSync(join(dir, '.gitignore'), '.env*.local\n');
+  const t: DeliveryTarget = { kind: 'env-local', path: join(dir, '.env.local'), var: 'K' };
+  addDelivery(ud, 'K', t);
+  redeliverFileTargets(ud, 'K', VAL);
+  redeliverFileTargets(ud, 'K', `${VAL}2`);
+  assert.deepEqual(
+    readdirSync(dir).filter((f) => f.includes('.bak-')),
+    [],
+  );
 });
 
 test('deliverToEnvLocal: writes outside any repo', () => {

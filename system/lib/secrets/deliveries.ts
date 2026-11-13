@@ -119,7 +119,10 @@ export function deliverToEnvLocal(
   if (checkIgnored(p, deps.git) === 'not-ignored') {
     throw new Error(`refused: ${p} is not gitignored`);
   }
-  writeEnvKey(p, varName, value);
+  // No backups: `.env.local.bak-<ts>` is not matched by a `.env.local` or
+  // `.env*.local` gitignore pattern, so a backup would put the key in git.
+  // The vault keeps the history.
+  writeEnvKey(p, varName, value, { backups: false });
 }
 
 export function deliverFileTarget(userData: string, t: DeliveryTarget, value: string): void {

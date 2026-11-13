@@ -63,10 +63,23 @@ function atomicWrite(path: string, content: string, backups: boolean, now: Date)
 }
 
 /**
- * Replace (or append) a `KEY=value` line, preserving every other line. The
- * value is double-quoted only if it contains whitespace, `=` or `"`. Written
- * to a 0600 temp file then renamed; an existing file is first copied to
- * `<path>.bak-<YYYYMMDDTHHMMSS>` (0600), keeping the newest 5.
+ * The value as it goes after `KEY=`, read back unchanged by `parseEnvFile`.
+ * Double-quoted when it holds whitespace, `=`, `"`, `'`, `#` or a backslash
+ * (and so any leading/trailing space); inside the quotes backslash and `"` are
+ * escaped.
+ * Throws on `\n` / `\r`: the grammar is one line per key.
+ */
+function envLiteral(value: string): string {
+  if (/[\r\n]/.test(value)) throw new Error('refused: env values cannot contain a newline');
+  if (!/[\s="'#\\]/.test(value)) return value;
+  return `"${value.replace(/[\\"]/g, (c) => `\\${c}`)}"`;
+}
+
+/**
+ * Replace (or append) a `KEY=value` line, preserving every other line (see
+ * `envLiteral` for quoting). Written to a 0600 temp file then renamed; an
+ * existing file is first copied to `<path>.bak-<YYYYMMDDTHHMMSS>` (0600),
+ * keeping the newest 5.
  */
 export function writeEnvKey(
   path: string,
@@ -74,9 +87,8 @@ export function writeEnvKey(
   value: string,
   opts: { backups?: boolean; now?: Date } = {},
 ): void {
+  const literal = envLiteral(value);
   const original = existsSync(path) ? readFileSync(path, 'utf8') : '';
-  const needsQuote = /\s|=|"/.test(value);
-  const literal = needsQuote ? `"${value.replace(/"/g, '\\"')}"` : value;
   const line = `${key}=${literal}`;
   const re = new RegExp(`^(?:export\\s+)?${key}=.*$`, 'm');
   const next = re.test(original)

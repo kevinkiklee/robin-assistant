@@ -82,6 +82,37 @@ test('writeEnvKey: $ in value is written literally', () => {
   assert.equal(readEnvFile(p).get('A'), "x$&y$'z");
 });
 
+test('writeEnvKey: quotes and escapes so tricky values round-trip', () => {
+  const p = join(tmp(), '.env');
+  const cases: [string, string][] = [
+    ["'quoted'", `"'quoted'"`],
+    ['a"b\\c', '"a\\"b\\\\c"'],
+    ['x#y', '"x#y"'],
+    ['back\\slash', '"back\\\\slash"'],
+    [' lead', '" lead"'],
+    ['trail ', '"trail "'],
+    ["it's", `"it's"`],
+    ['lit\\n', '"lit\\\\n"'],
+    ['plain_value', 'plain_value'],
+  ];
+  for (const [value, literal] of cases) {
+    writeEnvKey(p, 'A', value, { backups: false });
+    assert.equal(readFileSync(p, 'utf8'), `A=${literal}\n`, value);
+    assert.equal(readEnvFile(p).get('A'), value, value);
+  }
+});
+
+test('writeEnvKey: refuses a value with a newline or CR, writes nothing', () => {
+  const dir = tmp();
+  const p = join(dir, '.env');
+  writeFileSync(p, 'A=1\n');
+  for (const bad of ['a\nb', 'a\rb', 'tail\n']) {
+    assert.throws(() => writeEnvKey(p, 'A', bad), /newline/);
+  }
+  assert.equal(readFileSync(p, 'utf8'), 'A=1\n');
+  assert.deepEqual(readdirSync(dir), ['.env']);
+});
+
 test('readEnvFile: missing file gives empty map', () => {
   assert.equal(readEnvFile(join(tmp(), 'nope')).size, 0);
 });
