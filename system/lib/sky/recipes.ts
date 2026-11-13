@@ -2,7 +2,7 @@
 
 import { bearingLabel } from './color.ts';
 import { SKY } from './constants.ts';
-import type { ColorRead, Notification, RecipeMatch, Window } from './types.ts';
+import type { ColorRead, Notification, RecipeId, RecipeMatch, Window } from './types.ts';
 
 const fmtTime = (d: Date) =>
   d
@@ -23,6 +23,28 @@ const fmtMiles = (mi: number) => {
 // that almost never delivered (2026-09-20).
 const colourFires = (r: ColorRead) =>
   r.band === 'promising' && r.confidence >= SKY.alertMinConfidence;
+
+/**
+ * Does this recipe promise the sun's own light at its window? Every one that
+ * does must clear `sunLightReaches` — a confident directional read showing a
+ * low-cloud gap toward the sun — however good its own trigger looks. Exhaustive
+ * on purpose: a new recipe won't typecheck until it declares itself here.
+ * rain_clearing fired on 2026-11-13 with a 100% low deck to the horizon because
+ * it only checked that the rain stopped.
+ */
+export const NEEDS_SUN_LIGHT: Record<RecipeId, boolean> = {
+  sunrise_color: true,
+  sunset_color: true,
+  rain_clearing: true,
+  fog_night: false, // fog is the subject; flat light is fine
+  fog_on: false,
+  moon: false, // gated on its own horizon read at the moon's azimuth
+  tide_window: false, // flats at dawn, light or not
+};
+
+/** A confident read with an open horizon toward the sun. No read ⇒ no. */
+export const sunLightReaches = (r: ColorRead | null | undefined): boolean =>
+  !!r && r.clouds.horizonGap && r.confidence >= SKY.alertMinConfidence;
 
 const PRIORITY: Record<RecipeMatch['recipe'], number> = {
   sunset_color: 3,
@@ -189,7 +211,7 @@ export function matchRecipes(input: {
       mergeGroup: mergeFor('sunrise'),
     });
   }
-  return out;
+  return out.filter((m) => !NEEDS_SUN_LIGHT[m.recipe] || sunLightReaches(input[m.window]));
 }
 
 export function mergeMatches(matches: RecipeMatch[]): Notification[] {

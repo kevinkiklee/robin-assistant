@@ -2,7 +2,7 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { matchRecipes, mergeMatches } from './recipes.ts';
+import { matchRecipes, mergeMatches, NEEDS_SUN_LIGHT } from './recipes.ts';
 import type { ColorRead } from './types.ts';
 
 const promising = (window: 'sunrise' | 'sunset'): ColorRead => ({
@@ -137,9 +137,28 @@ test('fog_on suppressed outside the pre-dawn gate and on a clear METAR', () => {
   assert.equal(clear.length, 0);
 });
 
+// A low-cloud bank to the horizon toward the sun, high confidence.
+const banked = (window: 'sunrise' | 'sunset'): ColorRead => ({
+  window,
+  band: 'unlikely',
+  why: 'low-cloud bank toward the sun',
+  caution: null,
+  confidence: 0.8,
+  azimuth: window === 'sunrise' ? 58 : 302,
+  clouds: {
+    high: 0,
+    mid: 90,
+    low: 100,
+    horizonLowPct: 100,
+    horizonGap: false,
+    gapBearing: null,
+  },
+});
+
 test('rain_clearing fires inside the 1.5–3.5h sunset lead window', () => {
   const m = matchRecipes({
     rainClearing: true,
+    sunset: { ...promising('sunset'), band: 'mixed' },
     sunsetLeadH: 3,
     dates: { sunrise: '2026-06-26', sunset: '2026-06-25' },
   });
@@ -151,10 +170,56 @@ test('rain_clearing fires inside the 1.5–3.5h sunset lead window', () => {
 test('rain_clearing suppressed when too soon (<1.5h)', () => {
   const m = matchRecipes({
     rainClearing: true,
+    sunset: promising('sunset'),
     sunsetLeadH: 0.5,
     dates: { sunrise: '2026-06-26', sunset: '2026-06-25' },
   });
   assert.equal(m.length, 0);
+});
+
+test('rain_clearing suppressed when low cloud still banks the horizon toward the sun', () => {
+  const m = matchRecipes({
+    rainClearing: true,
+    sunset: banked('sunset'),
+    sunsetLeadH: 2.7,
+    dates: { sunrise: '2026-06-26', sunset: '2026-06-25' },
+  });
+  assert.equal(m.length, 0);
+});
+
+test('rain_clearing suppressed without a sunset read (fail closed)', () => {
+  const m = matchRecipes({
+    rainClearing: true,
+    sunsetLeadH: 3,
+    dates: { sunrise: '2026-06-26', sunset: '2026-06-25' },
+  });
+  assert.equal(m.length, 0);
+});
+
+test('rain_clearing suppressed when the horizon gap is low-confidence', () => {
+  const m = matchRecipes({
+    rainClearing: true,
+    sunset: { ...promising('sunset'), confidence: 0.4 },
+    sunsetLeadH: 3,
+    dates: { sunrise: '2026-06-26', sunset: '2026-06-25' },
+  });
+  assert.equal(m.length, 0);
+});
+
+test('every trigger on, horizon banked both ways: only recipes that need no sun light fire', () => {
+  const m = matchRecipes({
+    sunrise: { ...banked('sunrise'), band: 'promising' },
+    sunset: { ...banked('sunset'), band: 'promising' },
+    sunriseLeadH: 1,
+    sunsetLeadH: 2,
+    fog: { index: 8, peakWindow: '4am–6am', tafConcurs: true, preDawn: true },
+    metar: { fogOn: true, mistForming: false, visibilityMi: 0.25 },
+    rainClearing: true,
+    dates: { sunrise: '2026-06-26', sunset: '2026-06-25' },
+  });
+  assert.ok(m.length > 0, 'fixture should trigger something');
+  for (const r of m) assert.equal(NEEDS_SUN_LIGHT[r.recipe], false, `${r.recipe} fired`);
+  assert.ok(!m.some((r) => r.recipe === 'sunset_color' || r.recipe === 'rain_clearing'));
 });
 
 // ── moon ─────────────────────────────────────────────────────────────────────
