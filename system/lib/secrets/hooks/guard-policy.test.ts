@@ -292,36 +292,43 @@ test('other session: robin secret abort denied while the window is live, naming 
   const reason = denied(decideGuard(bash('s2', 'robin secret abort'), win, now));
   assert.equal(
     reason,
-    `A secret window is open in another session; it expires at ${hhmmss(Date.parse(win.expiresAt))}.`,
+    `A secret window is open in another session; it expires at ${hhmmss(Date.parse(win.expiresAt) + 10 * 60_000)}.`,
   );
   denied(decideGuard(bash('s2', 'cd /x && robin secret abort'), win, now));
 });
-test('other session: robin secret abort allowed once an open window has expired', () => {
-  assert.deepEqual(decideGuard(bash('s2', 'robin secret abort'), expired, now), ALLOW);
-});
-test('other session: saved/aborted window releases 10 min after expiry', () => {
+test('other session: every status (open included) releases only 10 min past expiry', () => {
   const exp = Date.parse(expired.expiresAt);
-  for (const status of ['saved', 'aborted'] as const) {
+  for (const status of ['open', 'saved', 'aborted'] as const) {
     const w: SecretWindow = { ...expired, status };
-    const before = at(exp + 10 * 60_000 - 1);
-    const reason = denied(decideGuard(bash('s2', 'robin secret abort'), w, before));
-    assert.match(reason, new RegExp(`expires at ${hhmmss(exp + 10 * 60_000)}`));
-    denied(decideGuard(call('s2', chrome('read_page'), { tabId: 7 }), w, before));
-    const after = at(exp + 10 * 60_000);
-    assert.deepEqual(decideGuard(bash('s2', 'robin secret abort'), w, after), ALLOW);
-    assert.deepEqual(
-      decideGuard(call('s2', chrome('read_page'), { tabId: 7 }), w, after),
-      ALLOW,
-      'denials stop',
-    );
+    for (const t of [exp + 60_000, exp + 10 * 60_000 - 1]) {
+      const reason = denied(decideGuard(bash('s2', 'robin secret abort'), w, at(t)));
+      assert.match(reason, new RegExp(`expires at ${hhmmss(exp + 10 * 60_000)}`));
+      denied(decideGuard(call('s2', chrome('read_page'), { tabId: 7 }), w, at(t)));
+      denied(decideGuard(bash('s2', 'pbpaste'), w, at(t)));
+    }
+    for (const t of [exp + 10 * 60_000, exp + 11 * 60_000]) {
+      assert.deepEqual(decideGuard(bash('s2', 'robin secret abort'), w, at(t)), ALLOW, status);
+      assert.deepEqual(
+        decideGuard(call('s2', chrome('read_page'), { tabId: 7 }), w, at(t)),
+        ALLOW,
+        'denials stop',
+      );
+    }
   }
 });
-test('other session: an expired open window no longer restricts; live denial says how to clear it', () => {
-  assert.deepEqual(decideGuard(bash('s2', 'pbpaste'), expired, now), ALLOW);
-  assert.deepEqual(decideGuard(call('s2', chrome('read_page'), { tabId: 7 }), expired, now), ALLOW);
+test('other session: a NaN expiry never releases', () => {
+  for (const status of ['open', 'saved', 'aborted'] as const) {
+    const w: SecretWindow = { ...win, expiresAt: 'not a date', status };
+    const later = at(now.getTime() + 365 * 24 * 3_600_000);
+    const reason = denied(decideGuard(bash('s2', 'robin secret abort'), w, later));
+    assert.match(reason, /expires at an unknown time/);
+    denied(decideGuard(call('s2', chrome('read_page'), { tabId: 7 }), w, later));
+  }
+});
+test('other session: live denial names the release time and how to clear it', () => {
   const reason = denied(decideGuard(bash('s2', 'pbpaste'), win, now));
   assert.match(reason, /robin secret abort/);
-  assert.match(reason, new RegExp(hhmmss(Date.parse(win.expiresAt))));
+  assert.match(reason, new RegExp(hhmmss(Date.parse(win.expiresAt) + 10 * 60_000)));
   assert.doesNotMatch(reason, /few minutes/);
 });
 test('same session: a saved window says to run robin secret abort if the tab is gone', () => {

@@ -29,7 +29,7 @@ const ABORT_RE = /^robin secret abort(\s|$)/;
 // Another session's abort, in any form (a tripwire like SCREEN_OR_CLIPBOARD_RE).
 const ANY_ABORT_RE = /robin\s+secret\s+abort/;
 const EDIT_TOOLS = new Set(['Write', 'Edit', 'MultiEdit', 'NotebookEdit']);
-/** A saved/aborted window keeps restricting other sessions this long past its expiry. */
+/** A window keeps restricting other sessions this long past its expiry. */
 export const RELEASE_GRACE_MS = 10 * 60_000;
 export const MARKER_EDIT_REASON = `This edit would write the redaction marker ${REDACTED} into a file; the original value was hidden from you. Leave that line unchanged.`;
 // Superset of the brief's list: also refuses redirects, `$VAR`, subshells and
@@ -129,14 +129,14 @@ export function isMarkerEdit(input: HookInput): boolean {
 }
 
 /**
- * When the window stops restricting other sessions (epoch ms): its expiry
- * while open, 10 min after it once saved or aborted (the tab may still show
- * the key). An unparseable expiry counts as already released.
+ * When the window stops restricting other sessions (epoch ms): 10 min past its
+ * expiry whatever its status — an expired open window may still show the key
+ * (its agent died mid-flow), and a saved/aborted one until its tab closes. An
+ * unparseable expiry never releases.
  */
 export function windowReleaseAt(win: SecretWindow): number {
   const exp = new Date(win.expiresAt).getTime();
-  if (Number.isNaN(exp)) return Number.NEGATIVE_INFINITY;
-  return win.status === 'open' ? exp : exp + RELEASE_GRACE_MS;
+  return Number.isNaN(exp) ? Number.POSITIVE_INFINITY : exp + RELEASE_GRACE_MS;
 }
 
 function pad2(n: number): string {
