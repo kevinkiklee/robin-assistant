@@ -1,11 +1,13 @@
 import assert from 'node:assert/strict';
 import {
   chmodSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
   statSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -178,4 +180,102 @@ test('OTEL_* in settings.json env fails and survives repair', async () => {
   await f.inv().repair?.();
   assert.ok(JSON.parse(readFileSync(s, 'utf8')).env.OTEL_EXPORTER_OTLP_ENDPOINT);
   assert.equal((await f.inv().check()).ok, false);
+});
+
+test('not set up: check ok, repair does nothing', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'robin-hygiene-'));
+  const home = join(root, 'home');
+  const userData = join(root, 'ud');
+  mkdirSync(userData, { recursive: true });
+  const inv = secretsHygieneInvariant({ userData, home, env: {} });
+  const r = await inv.check();
+  assert.equal(r.ok, true);
+  assert.match(r.message ?? '', /not set up/);
+  await inv.repair?.();
+  assert.equal(existsSync(join(home, '.claude')), false);
+});
+
+test('rule file alone counts as set up', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'robin-hygiene-'));
+  const home = join(root, 'home');
+  installRuleFile(home);
+  const inv = secretsHygieneInvariant({ userData: join(root, 'ud'), home, env: {} });
+  const r = await inv.check();
+  assert.equal(r.ok, false);
+  assert.match(r.message ?? '', /hook missing/);
+});
+
+test('null hook group in settings does not throw', async () => {
+  const f = fixture();
+  const s = join(f.home, '.claude', 'settings.json');
+  const cur = JSON.parse(readFileSync(s, 'utf8'));
+  cur.hooks.PreToolUse.push(null, { hooks: null }, { hooks: [null] });
+  writeFileSync(s, JSON.stringify(cur));
+  assert.equal((await f.inv().check()).ok, true);
+});
+
+test('a stat failure is reported, not thrown', async () => {
+  const f = fixture();
+  const dir = join(f.root, 'locked');
+  mkdirSync(dir);
+  const target = join(dir, 'k.key');
+  writeFileSync(target, 'x', { mode: 0o600 });
+  writeFileSync(f.sp.deliveries, JSON.stringify({ N: [{ kind: 'secret-file', path: target }] }));
+  chmodSync(dir, 0o000);
+  try {
+    const r = await f.inv().check();
+    assert.equal(r.ok, true); // existsSync false under a locked dir: skipped, no throw
+  } finally {
+    chmodSync(dir, 0o700);
+  }
+  // Corrupt top-level shape: whole-check guard
+  writeFileSync(f.sp.deliveries, JSON.stringify({ N: 5 }));
+  const r2 = await f.inv().check();
+  assert.equal(typeof r2.ok, 'boolean');
+});
+
+test('saved window past expiry says left over', async () => {
+  const f = fixture();
+  const past = new Date(Date.now() - 5_000).toISOString();
+  writeFileSync(
+    f.sp.window,
+    JSON.stringify({
+      sessionId: 's',
+      tabId: 1,
+      provider: 'acme',
+      name: 'NAME',
+      scriptHashes: [],
+      clipboardHashAtArm: 'h',
+      openedAt: past,
+      expiresAt: past,
+      status: 'saved',
+    }),
+  );
+  const r = await f.inv().check();
+  assert.match(r.message ?? '', /left over/);
+  assert.doesNotMatch(r.message ?? '', /stale key window/);
+});
+
+test('symlinked backup is reported and never chmod-ed', async () => {
+  const f = fixture();
+  const outside = join(f.root, 'outside.txt');
+  writeFileSync(outside, 'x', { mode: 0o644 });
+  chmodSync(outside, 0o644);
+  symlinkSync(outside, `${f.sp.vault}.bak-20261113T010101`);
+  const r = await f.inv().check();
+  assert.match(r.message ?? '', /symlinked backup .*vault\.env\.bak-/);
+  await f.inv().repair?.();
+  assert.equal(statSync(outside).mode & 0o777, 0o644);
+});
+
+test('unrecognized secret hook command is a problem', async () => {
+  const f = fixture();
+  const s = join(f.home, '.claude', 'settings.json');
+  const cur = JSON.parse(readFileSync(s, 'utf8'));
+  cur.hooks.PostToolUse = [
+    { hooks: [{ type: 'command', command: 'echo something /lib/secrets/hooks/post-tool.js' }] },
+  ];
+  writeFileSync(s, JSON.stringify(cur));
+  const r = await f.inv().check();
+  assert.match(r.message ?? '', /unrecognized secret hook command/);
 });
