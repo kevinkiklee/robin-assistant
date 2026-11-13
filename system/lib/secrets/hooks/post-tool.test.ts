@@ -483,3 +483,51 @@ test('post-tool: withheld Bash keeps an enum returnCodeInterpretation, blanks a 
     returnCodeInterpretation: 'no_matches',
   });
 });
+
+// I3: any binary payload gets the text form, not just images.
+test('post-tool: withheld Read of a PDF becomes a Read text result', () => {
+  const u = brokenVault();
+  const out = withheld(u, {
+    tool_name: 'Read',
+    tool_input: { file_path: '/Users/someone/docs/manual.pdf' },
+    tool_response: {
+      type: 'pdf',
+      file: {
+        filePath: '/Users/someone/docs/manual.pdf',
+        base64: 'JVBERi0xLjcKJcfsj6IKNSAwIG9iago8PA',
+        originalSize: 4321,
+      },
+    },
+  });
+  assert.deepEqual(out, {
+    type: 'text',
+    file: {
+      filePath: '/Users/someone/docs/manual.pdf',
+      content: fileNotice(u),
+      numLines: 1,
+      startLine: 1,
+      totalLines: 1,
+    },
+  });
+});
+
+test('post-tool: withheld MCP output with a binary resource blob → one text block', () => {
+  const u = brokenVault();
+  const out = withheld(u, {
+    tool_name: 'mcp__files__read_resource',
+    tool_response: [
+      { type: 'text', text: 'here it is' },
+      { type: 'resource', resource: { uri: 'file:///x.bin', blob: 'AAECAwQF' } },
+    ],
+  });
+  assert.deepEqual(out, [{ type: 'text', text: fileNotice(u) }]);
+});
+
+test('post-tool: withheld MCP audio block (data) → one text block', () => {
+  const u = brokenVault();
+  const out = withheld(u, {
+    tool_name: 'mcp__sound__record',
+    tool_response: [{ type: 'audio', data: 'UklGRiQAAABXQVZF', mimeType: 'audio/wav' }],
+  });
+  assert.deepEqual(out, [{ type: 'text', text: fileNotice(u) }]);
+});

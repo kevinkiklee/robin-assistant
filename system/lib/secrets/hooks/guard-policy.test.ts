@@ -352,7 +352,10 @@ test('marker edits are denied in every session, window or not', () => {
         { old_string: 'B=1', new_string: MARKER },
       ],
     }),
-    call('s9', 'NotebookEdit', { notebook_path: '/p/n.ipynb', new_source: `k = "${MARKER}"` }),
+    call('s9', 'NotebookEdit', {
+      notebook_path: '/p/secrets.ipynb',
+      new_source: `k = "${MARKER}"`,
+    }),
   ];
   for (const e of edits) {
     for (const w of [null, win, { ...win, sessionId: 's9' }]) {
@@ -372,5 +375,49 @@ test('marker: other tools and marker-free edits are unaffected', () => {
       now,
     ),
     ALLOW,
+  );
+});
+
+// I1: the marker deny covers secret/config-like targets only; code and docs that
+// mention the marker literal stay editable.
+const isMarkerDeny = (d: GuardDecision) =>
+  d.decision === 'deny' && d.reason.includes('Leave that line unchanged');
+test('marker: code and doc files that contain the marker literal may be edited', () => {
+  const allowed: HookInput[] = [
+    call('s1', 'Edit', {
+      file_path: 'system/lib/secrets/hooks/redact-policy.ts',
+      old_string: 'a',
+      new_string: `const REDACTED = '${MARKER}';`,
+    }),
+    call('s1', 'Write', { file_path: '/p/notes.md', content: `the marker is ${MARKER}\n` }),
+    call('s1', 'Write', { file_path: '/p/tool.py', content: `M = "${MARKER}"\n` }),
+  ];
+  for (const e of allowed) assert.deepEqual(decideGuard(e, null, now), ALLOW);
+});
+test('marker: secret- and config-like targets are denied', () => {
+  const denies: HookInput[] = [
+    call('s1', 'Write', { file_path: '/proj/.env.local', content: `KEY=${MARKER}\n` }),
+    call('s1', 'Write', { file_path: 'config/settings.json', content: `{"k":"${MARKER}"}` }),
+    call('s1', 'Edit', {
+      file_path: '~/.zshrc',
+      old_string: 'export A=1',
+      new_string: `export A=${MARKER}`,
+    }),
+    call('s1', 'Write', { file_path: '/p/.npmrc', content: `//r/:_authToken=${MARKER}` }),
+    call('s1', 'Write', { file_path: '/p/App.PLIST', content: MARKER }),
+    call('s1', 'Write', { file_path: '/p/my-Credentials', content: MARKER }),
+    call('s1', 'Write', { file_path: '/p/api_token.txt', content: MARKER }),
+    call('s1', 'Write', { file_path: '/home/u/.netrc', content: MARKER }),
+    call('s1', 'Write', { file_path: '/p/server.key', content: MARKER }),
+  ];
+  for (const e of denies) assert.ok(isMarkerDeny(decideGuard(e, null, now)), JSON.stringify(e));
+});
+test('marker: an edit with no or an unknown target path fails closed', () => {
+  assert.ok(isMarkerDeny(decideGuard(call('s1', 'Write', { content: MARKER }), null, now)));
+  assert.ok(
+    isMarkerDeny(decideGuard(call('s1', 'Write', { file_path: 7, content: MARKER }), null, now)),
+  );
+  assert.ok(
+    isMarkerDeny(decideGuard(call('s1', 'Write', { file_path: '', content: MARKER }), null, now)),
   );
 });

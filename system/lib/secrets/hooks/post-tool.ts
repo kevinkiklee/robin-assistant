@@ -57,18 +57,30 @@ function fixedWithheld(mcp: boolean, notice: string): unknown {
 type Obj = Record<string, unknown>;
 const isObj = (v: unknown): v is Obj => typeof v === 'object' && v !== null && !Array.isArray(v);
 
-function isImageBlock(v: object): boolean {
-  return (
-    !Array.isArray(v) &&
-    (v as { type?: unknown }).type === 'image' &&
-    (Object.hasOwn(v, 'data') || Object.hasOwn(v, 'source'))
-  );
+/**
+ * An MCP content block carrying binary: an image (`data` or `source`), any
+ * typed block with `data` (audio and the like), or an embedded resource with a
+ * `blob`. Its schema has no string slot to blank, so it can't keep its shape.
+ */
+function isBinaryBlock(v: object): boolean {
+  if (Array.isArray(v)) return false;
+  const b = v as { type?: unknown; resource?: unknown };
+  if (b.type === 'image' && Object.hasOwn(v, 'source')) return true;
+  if (typeof b.type === 'string' && Object.hasOwn(v, 'data')) return true;
+  return isObj(b.resource) && Object.hasOwn(b.resource, 'blob');
 }
 
-function containsImageBlock(v: unknown): boolean {
+function containsBinaryBlock(v: unknown): boolean {
   if (typeof v !== 'object' || v === null) return false;
-  if (isImageBlock(v)) return true;
-  return (Array.isArray(v) ? v : Object.values(v)).some(containsImageBlock);
+  if (isBinaryBlock(v)) return true;
+  return (Array.isArray(v) ? v : Object.values(v)).some(containsBinaryBlock);
+}
+
+/** True when `v` has a `base64` key at any depth (a Read image, PDF, notebook output…). */
+function containsBase64(v: unknown): boolean {
+  if (typeof v !== 'object' || v === null) return false;
+  if (!Array.isArray(v) && Object.hasOwn(v, 'base64')) return true;
+  return (Array.isArray(v) ? v : Object.values(v)).some(containsBase64);
 }
 
 /**
@@ -95,9 +107,10 @@ function blankStrings(v: unknown, notice: string, key?: string): unknown {
 }
 
 /**
- * The withheld replacement in the tool's own shape. Output carrying image data
- * becomes that tool's text form: an MCP text block, a Read text result, or a
- * Bash text result (other Bash keys kept, their strings blanked).
+ * The withheld replacement in the tool's own shape. Output carrying binary data
+ * becomes that tool's text form: an MCP text block, a Read text result (any
+ * result whose `file` holds base64: image, PDF, notebook), or a Bash text
+ * result (other Bash keys kept, their strings blanked).
  */
 function withheldFrom(
   original: unknown,
@@ -106,11 +119,11 @@ function withheldFrom(
   notice: string,
 ): unknown {
   if (mcp) {
-    return containsImageBlock(original)
+    return containsBinaryBlock(original)
       ? fixedWithheld(true, notice)
       : blankStrings(original, notice);
   }
-  if (isObj(original) && original.type === 'image' && isObj(original.file)) {
+  if (isObj(original) && isObj(original.file) && containsBase64(original.file)) {
     const fromResponse = original.file.filePath;
     const fromInput = isObj(toolInput) ? toolInput.file_path : undefined;
     const filePath =

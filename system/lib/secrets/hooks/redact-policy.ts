@@ -21,8 +21,15 @@ const VAULT_MIN_LENGTH = 10;
  */
 export class RedactionSourceError extends Error {
   override readonly name = 'RedactionSourceError';
-  constructor(readonly file: string) {
+  /** The errno code of the underlying failure (EISDIR, ENOTDIR…), when there was one. */
+  readonly code: string | undefined;
+  constructor(
+    readonly file: string,
+    cause?: unknown,
+  ) {
     super(`could not read ${file}`);
+    const code = (cause as NodeJS.ErrnoException | undefined)?.code;
+    this.code = typeof code === 'string' ? code : undefined;
   }
 }
 
@@ -32,7 +39,7 @@ function readSource(path: string): string | undefined {
     return readFileSync(path, 'utf8');
   } catch (e) {
     if ((e as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
-    throw new RedactionSourceError(path);
+    throw new RedactionSourceError(path, e);
   }
 }
 
@@ -49,7 +56,7 @@ function vaultBackups(vault: string): string[] {
     names = readdirSync(dir);
   } catch (e) {
     if ((e as NodeJS.ErrnoException).code === 'ENOENT') return [];
-    throw new RedactionSourceError(dir);
+    throw new RedactionSourceError(dir, e);
   }
   const prefix = 'vault.env.bak-';
   return names
@@ -100,7 +107,7 @@ function readListedFiles(userData: string): { texts: string[]; skipped: SkippedL
         skipped.push({ path, reason: `${code === 'ENOENT' ? 'missing' : 'unreadable'} (${code})` });
         return undefined;
       }
-      throw new RedactionSourceError(path);
+      throw new RedactionSourceError(path, e);
     }
   };
   const readFile = (path: string): void => {

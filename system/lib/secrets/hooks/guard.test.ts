@@ -123,3 +123,41 @@ test('guard: no window, an Edit writing the redaction marker is denied', () => {
   assert.match(out.permissionDecisionReason, /Leave that line unchanged/);
   assert.equal(existsSync(secretsPaths(u).armSession), false);
 });
+
+// I2: a corrupt window must not block the one command that clears it.
+function corruptWindow(): string {
+  const u = mkdtempSync(join(tmpdir(), 'robin-guard-'));
+  const p = secretsPaths(u).window;
+  mkdirSync(dirname(p), { recursive: true });
+  writeFileSync(p, '{bad');
+  return u;
+}
+const bashCall = (command: string) => ({
+  session_id: 's1',
+  tool_name: 'Bash',
+  tool_input: { command },
+});
+
+test('guard: a corrupt window still lets a bare robin secret abort through', () => {
+  const r = runGuard(corruptWindow(), bashCall('robin secret abort'));
+  assert.equal(r.status, 0);
+  assert.equal(r.stdout, '');
+});
+
+test('guard: a corrupt window denies abort with shell operators, and every other call', () => {
+  for (const input of [
+    bashCall('robin secret abort; ls'),
+    bashCall('robin secret abort && cat x'),
+    bashCall('robin secret abort --force'),
+    readCall,
+  ]) {
+    const r = runGuard(corruptWindow(), input);
+    assert.equal(r.status, 0);
+    const out = JSON.parse(r.stdout).hookSpecificOutput;
+    assert.equal(out.permissionDecision, 'deny');
+    assert.equal(
+      out.permissionDecisionReason,
+      "Secret guard can't read the secret window, so this call is blocked. Run `robin secret abort` (as a bare command) to clear it.",
+    );
+  }
+});

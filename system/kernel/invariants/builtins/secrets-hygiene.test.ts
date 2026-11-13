@@ -309,7 +309,26 @@ test('an unreadable redact-files list is reported', async () => {
   const f = fixture();
   mkdirSync(f.sp.redactFiles);
   const r = await f.inv().check();
-  assert.match(r.message ?? '', /redact-files\.txt is unreadable/);
+  assert.match(
+    r.message ?? '',
+    /redaction source .*redact-files\.txt can't be read \(EISDIR\), so the redaction hook withholds all output — fix it/,
+  );
+});
+
+test('a listed redaction source that throws is named, not the whole list', async () => {
+  const f = fixture();
+  const plain = join(f.root, 'plain');
+  writeFileSync(plain, 'x\n');
+  const child = join(plain, 'child');
+  writeFileSync(f.sp.redactFiles, `${child}\n`);
+  const m = (await f.inv().check()).message ?? '';
+  assert.ok(
+    m.includes(
+      `redaction source ${child} can't be read (ENOTDIR), so the redaction hook withholds all output — fix or remove it from redact-files.txt`,
+    ),
+    m,
+  );
+  assert.doesNotMatch(m, /is unreadable, so/);
 });
 
 test('repair leaves settings.json alone when the hooks are fine (N5)', async () => {

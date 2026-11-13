@@ -3,7 +3,7 @@
 // navigate that tab, look up tool schemas, and run `robin secret set|abort`.
 // Other sessions keep working but may not touch that tab, the screen or the
 // clipboard. In every session, with or without a window, an edit may not write
-// the redaction marker back into a file. Deny reasons never echo tool input: a
+// the redaction marker into a secret or config file. Deny reasons never echo tool input: a
 // page script or command could carry anything.
 
 import { hashText } from '../clipboard.ts';
@@ -35,6 +35,7 @@ export const MARKER_EDIT_REASON = `This edit would write the redaction marker ${
 // Superset of the brief's list: also refuses redirects, `$VAR`, subshells and
 // process substitution, and a CR that some shells treat as a separator.
 const SHELL_META_RE = /[;&|`$()<>\n\r]/;
+const BARE_ABORT_RE = /^robin secret abort\s*$/;
 // Other sessions' shell commands: a substring tripwire, best effort and NOT a
 // security boundary. Quoting (pb""paste), variables or a script file evade it.
 const SCREEN_OR_CLIPBOARD_RE = /pbpaste|clipboard|pasteboard|screencapture|osascript/i;
@@ -112,6 +113,15 @@ function armTab(input: HookInput): number | undefined {
   return Number.isSafeInteger(n) ? n : undefined;
 }
 
+/**
+ * True for a Bash `robin secret abort` with no arguments and no shell
+ * operators: the one call the guard lets through when it can't read the window
+ * (abort is what clears an unreadable window).
+ */
+export function isBareAbortCall(input: HookInput): boolean {
+  return input.tool_name === 'Bash' && isRobinSecretCommand(commandOf(input), BARE_ABORT_RE);
+}
+
 /** True when the call is a Bash `robin secret arm --tab <n>` (the only call that needs node with no window). */
 export function isArmCall(input: HookInput): boolean {
   return armTab(input) !== undefined;
@@ -123,9 +133,50 @@ function containsMarker(v: unknown): boolean {
   return (Array.isArray(v) ? v : Object.values(v)).some(containsMarker);
 }
 
-/** True for a Write / Edit / MultiEdit / NotebookEdit whose input carries the redaction marker anywhere. */
+// Secret- or config-like targets: where a redacted value read back from a file
+// could be written over the real one. Code and docs that merely mention the
+// marker literal (this module, its tests, design notes) stay editable.
+const CONFIG_EXTS = new Set([
+  'env',
+  'json',
+  'jsonc',
+  'yaml',
+  'yml',
+  'toml',
+  'ini',
+  'conf',
+  'cfg',
+  'properties',
+  'plist',
+  'xml',
+  'pem',
+  'key',
+  'npmrc',
+]);
+const SECRET_NAME_RE = /secret|credential|token|\.netrc/i;
+const SHELL_RC = new Set(['.zshrc', '.bashrc', '.profile', '.zprofile', '.bash_profile']);
+
+/** True when an edit target looks secret- or config-like; a missing or non-string path counts (fail closed). */
+function isSecretLikeTarget(path: unknown): boolean {
+  if (typeof path !== 'string' || path === '') return true;
+  const base = path.split(/[\\/]/).pop() ?? '';
+  if (base === '') return true;
+  const lower = base.toLowerCase();
+  if (lower.startsWith('.env') || SHELL_RC.has(lower) || SECRET_NAME_RE.test(lower)) return true;
+  // After the last dot, so a dotfile like `.npmrc` yields `npmrc`.
+  const dot = lower.lastIndexOf('.');
+  return dot >= 0 && CONFIG_EXTS.has(lower.slice(dot + 1));
+}
+
+/**
+ * True for a Write / Edit / MultiEdit / NotebookEdit whose input carries the
+ * redaction marker and whose target (file_path / notebook_path) is secret- or
+ * config-like, or unknown.
+ */
 export function isMarkerEdit(input: HookInput): boolean {
-  return EDIT_TOOLS.has(input.tool_name) && containsMarker(input.tool_input);
+  if (!EDIT_TOOLS.has(input.tool_name) || !containsMarker(input.tool_input)) return false;
+  const ti = input.tool_input;
+  return isSecretLikeTarget(input.tool_name === 'NotebookEdit' ? ti.notebook_path : ti.file_path);
 }
 
 /**
