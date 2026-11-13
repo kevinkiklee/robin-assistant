@@ -61,16 +61,23 @@ test('post-tool: closes the window after save + tabs_close on its tab', () => {
   assert.equal(existsSync(secretsPaths(u).window), false);
 });
 
-test('post-tool: closes an aborted window on navigate with a string tab id', () => {
+test('post-tool: closes an aborted window on tabs_close with a string tab id', () => {
   const u = userDataWith({ status: 'aborted' });
+  const r = runPost(u, closeTab('7'));
+  assert.equal(r.status, 0);
+  assert.equal(existsSync(secretsPaths(u).window), false);
+});
+
+test('post-tool: navigate after save keeps the window (Ruling 8)', () => {
+  const u = userDataWith({ status: 'saved' });
   const r = runPost(u, {
     session_id: 's1',
     tool_name: 'mcp__claude-in-chrome__navigate',
-    tool_input: { tabId: '7', url: 'https://example.test/' },
+    tool_input: { tabId: 7, url: 'https://example.test/' },
     tool_response: [{ type: 'text', text: 'ok' }],
   });
   assert.equal(r.status, 0);
-  assert.equal(existsSync(secretsPaths(u).window), false);
+  assert.equal(existsSync(secretsPaths(u).window), true);
 });
 
 test('post-tool: keeps an open (unsaved) window on tabs_close', () => {
@@ -152,10 +159,15 @@ test('post-tool: a corrupt window file still redacts and is left alone', () => {
   assert.equal(readFileSync(secretsPaths(u).window, 'utf8'), '{bad');
 });
 
-test('post-tool: throws → withheld notice', () => {
+function brokenRedactFiles(): string {
   const u = userDataWith();
   mkdirSync(join(u, 'config', 'secrets'), { recursive: true });
   writeFileSync(secretsPaths(u).redactFiles, `${u}\n`);
+  return u;
+}
+
+test('post-tool: throws → withheld notice', () => {
+  const u = brokenRedactFiles();
   const r = runPost(u, {
     session_id: 's1',
     tool_name: 'mcp__claude-in-chrome__get_page_text',
@@ -171,10 +183,42 @@ test('post-tool: throws → withheld notice', () => {
   });
 });
 
+test('post-tool: withheld MCP list keeps its blocks; an image block becomes text', () => {
+  const u = brokenRedactFiles();
+  const r = runPost(u, {
+    session_id: 's1',
+    tool_name: 'mcp__claude-in-chrome__computer',
+    tool_input: { tabId: 3, action: 'screenshot' },
+    tool_response: [
+      { type: 'text', text: 'shot taken' },
+      { type: 'image', data: 'AAAA', mimeType: 'image/png' },
+    ],
+  });
+  assert.deepEqual(JSON.parse(r.stdout).hookSpecificOutput.updatedMCPToolOutput, [
+    { type: 'text', text: WITHHELD },
+    { type: 'text', text: WITHHELD },
+  ]);
+});
+
+test('post-tool: withheld Read output keeps the Read shape', () => {
+  const u = brokenRedactFiles();
+  const r = runPost(u, {
+    session_id: 's1',
+    tool_name: 'Read',
+    tool_input: { file_path: '/x' },
+    tool_response: {
+      type: 'text',
+      file: { filePath: '/x', content: 'secret-ish text', numLines: 1, startLine: 1 },
+    },
+  });
+  assert.deepEqual(JSON.parse(r.stdout).hookSpecificOutput.updatedToolOutput, {
+    type: 'text',
+    file: { filePath: WITHHELD, content: WITHHELD, numLines: 1, startLine: 1 },
+  });
+});
+
 test('post-tool: throws on a built-in → withheld Bash-shaped notice', () => {
-  const u = userDataWith();
-  mkdirSync(join(u, 'config', 'secrets'), { recursive: true });
-  writeFileSync(secretsPaths(u).redactFiles, `${u}\n`);
+  const u = brokenRedactFiles();
   const r = runPost(u, {
     session_id: 's1',
     tool_name: 'Bash',

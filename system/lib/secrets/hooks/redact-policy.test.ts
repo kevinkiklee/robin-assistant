@@ -177,3 +177,55 @@ test('loadRedactionValues: a directory listed in redact-files throws', () => {
   writeFileSync(p.redactFiles, `${u}\n`);
   assert.throws(() => loadRedactionValues(u));
 });
+
+test('loadRedactionValues: multi-line listed files add each line and each KEY=value value', () => {
+  const u = mkdtempSync(join(tmpdir(), 'robin-redact-'));
+  const p = secretsPaths(u);
+  mkdirSync(join(u, 'config', 'secrets'), { recursive: true });
+  const pem = join(u, 'fake.pem');
+  const body1 = 'spk_test_PEMLINEONE0123456789abcdef';
+  const body2 = 'spk_test_PEMLINETWO0123456789abcdef';
+  writeFileSync(
+    pem,
+    `-----BEGIN FAKE KEY-----\n${body1}\n${body2}\nshort\n-----END FAKE KEY-----\n`,
+  );
+  const env = join(u, 'service.env');
+  writeFileSync(env, 'SVC_TOKEN=spk_test_service_env_000001\nSVC_PORT=8080\n');
+  writeFileSync(p.redactFiles, `${pem}\n${env}\n`);
+  const values = loadRedactionValues(u);
+  for (const v of [
+    body1,
+    body2,
+    'spk_test_service_env_000001',
+    'SVC_TOKEN=spk_test_service_env_000001',
+  ]) {
+    assert.ok(values.includes(v), `includes ${v.slice(0, 18)}`);
+  }
+  assert.ok(
+    values.some((v) => v.startsWith('-----BEGIN FAKE KEY-----\n')),
+    'whole file kept',
+  );
+  assert.equal(values.includes('short'), false);
+  // One body line on its own (e.g. `sed -n 2p`) is now caught.
+  assert.equal(redactOutput(`line: ${body2}`, values).output, `line: ${REDACTED}`);
+  assert.equal(redactOutput('x=spk_test_service_env_000001', values).output, `x=${REDACTED}`);
+});
+
+test('redact: an object with type image but no data/source is walked', () => {
+  const r = redactOutput({ type: 'image', alt: KEY }, [KEY]);
+  assert.deepEqual(r.output, { type: 'image', alt: REDACTED });
+});
+
+test('redact: colliding redacted keys get suffixes; __proto__ stays an own key', () => {
+  const input = JSON.parse(
+    `{"${KEY}":1,"x${KEY}":2,"${REDACTED}":3,"__proto__":"${KEY}"}`,
+  ) as Record<string, unknown>;
+  const out = redactOutput(input, [KEY]).output as Record<string, unknown>;
+  assert.equal(Object.getPrototypeOf(out), Object.prototype);
+  assert.deepEqual(
+    Object.keys(out).sort(),
+    [REDACTED, `${REDACTED}_2`, `x${REDACTED}`, '__proto__'].sort(),
+  );
+  assert.equal(Object.getOwnPropertyDescriptor(out, '__proto__')?.value, REDACTED);
+  assert.equal(JSON.stringify(out).includes(KEY), false);
+});

@@ -6,7 +6,7 @@
 import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
-import { readEnvFile } from '../env-file.ts';
+import { parseEnvFile, readEnvFile } from '../env-file.ts';
 import { isSecretClassName, secretsPaths } from '../store.ts';
 
 export const REDACTED = '[REDACTED-SECRET]';
@@ -45,7 +45,8 @@ function readListed(path: string): string | undefined {
 /**
  * Every value to hide: all `vault.env` values, secret-class values from Robin's
  * `.env` and `daemon.env`, and the trimmed content of each file listed in
- * `redact-files.txt`. Values under 16 chars are skipped. Deduped, longest first.
+ * `redact-files.txt` (whole file, each line, each KEY=value value). Values under
+ * 16 chars are skipped. Deduped, longest first.
  */
 export function loadRedactionValues(userData: string): string[] {
   const p = secretsPaths(userData);
@@ -59,7 +60,11 @@ export function loadRedactionValues(userData: string): string[] {
   }
   for (const file of listedFiles(p.redactFiles)) {
     const text = readListed(file);
-    if (text !== undefined) add(text.trim());
+    if (text === undefined) continue;
+    // The whole file, each line (a PEM body), and each KEY=value value (an env file).
+    add(text.trim());
+    for (const line of text.split(/\r?\n/)) add(line.trim());
+    for (const v of parseEnvFile(text).values()) add(v);
   }
   return [...values].sort((a, b) => b.length - a.length);
 }
@@ -135,8 +140,23 @@ function redactString(s: string, needles: string[]): string {
   return out + s.slice(pos, curStart) + REDACTED + s.slice(curEnd);
 }
 
+/** An image content block: `type: 'image'` carrying `data` or `source`. Other `type: 'image'` objects are walked. */
 function isImageBlock(v: object): boolean {
-  return !Array.isArray(v) && (v as { type?: unknown }).type === 'image';
+  return (
+    !Array.isArray(v) &&
+    (v as { type?: unknown }).type === 'image' &&
+    (Object.hasOwn(v, 'data') || Object.hasOwn(v, 'source'))
+  );
+}
+
+/**
+ * Sets `key` on `out` as an own data property (so `__proto__` is kept as a key,
+ * not a prototype change), adding `_2`, `_3`… when the key is already taken.
+ */
+function setOwnKey(out: Record<string, unknown>, key: string, value: unknown): void {
+  let k = key;
+  for (let n = 2; Object.hasOwn(out, k); n++) k = `${key}_${n}`;
+  Object.defineProperty(out, k, { value, enumerable: true, writable: true, configurable: true });
 }
 
 /**
@@ -161,7 +181,7 @@ export function redactOutput(
     if (typeof v !== 'object' || v === null || isImageBlock(v)) return v;
     if (Array.isArray(v)) return v.map(walk);
     const out: Record<string, unknown> = {};
-    for (const [k, val] of Object.entries(v)) out[walk(k) as string] = walk(val);
+    for (const [k, val] of Object.entries(v)) setOwnKey(out, walk(k) as string, walk(val));
     return out;
   };
 

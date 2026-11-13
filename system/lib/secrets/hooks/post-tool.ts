@@ -20,13 +20,70 @@ function emitOutput(mcp: boolean, value: unknown): void {
   );
 }
 
-function emitWithheld(mcp: boolean): void {
-  emitOutput(
-    mcp,
-    mcp
-      ? [{ type: 'text', text: WITHHELD }]
-      : { stdout: WITHHELD, stderr: '', interrupted: false, isImage: false },
+// Strings and keys shorter than the 16-char redaction floor cannot hold a whole
+// saved value, so a short `type` discriminator and short keys survive withholding.
+const KEEP_BELOW = 16;
+
+function fixedWithheld(mcp: boolean): unknown {
+  return mcp
+    ? [{ type: 'text', text: WITHHELD }]
+    : { stdout: WITHHELD, stderr: '', interrupted: false, isImage: false };
+}
+
+function isImageBlock(v: object): boolean {
+  return (
+    !Array.isArray(v) &&
+    (v as { type?: unknown }).type === 'image' &&
+    (Object.hasOwn(v, 'data') || Object.hasOwn(v, 'source'))
   );
+}
+
+/**
+ * The tool's own output with every string replaced by the notice, so the
+ * replacement keeps the shape Claude Code expects for that tool. Kept as is:
+ * array/object structure, non-string leaves, keys under 16 chars, and short
+ * `type` values. Longer keys become the notice (suffixed on collision). In an
+ * MCP content list an image block becomes a text block carrying the notice.
+ */
+function withheldFrom(original: unknown, mcp: boolean): unknown {
+  const walk = (v: unknown, key: string | undefined, inMcpList: boolean): unknown => {
+    if (typeof v === 'string') {
+      return v === '' || (key === 'type' && v.length < KEEP_BELOW) ? v : WITHHELD;
+    }
+    if (typeof v !== 'object' || v === null) return v;
+    if (inMcpList && isImageBlock(v)) return { type: 'text', text: WITHHELD };
+    if (Array.isArray(v)) return v.map((item) => walk(item, undefined, mcp && v === original));
+    const out: Record<string, unknown> = {};
+    for (const [k, val] of Object.entries(v)) {
+      const base = k.length < KEEP_BELOW ? k : WITHHELD;
+      let name = base;
+      for (let n = 2; Object.hasOwn(out, name); n++) name = `${base}_${n}`;
+      Object.defineProperty(out, name, {
+        value: walk(val, k, false),
+        enumerable: true,
+        writable: true,
+        configurable: true,
+      });
+    }
+    return out;
+  };
+  if (typeof original === 'string' || (typeof original === 'object' && original !== null)) {
+    return walk(original, undefined, false);
+  }
+  return fixedWithheld(mcp);
+}
+
+/** Withholds the whole output, in the tool's own shape when the payload parses. */
+function emitWithheld(mcp: boolean, raw: string | undefined): void {
+  let replacement: unknown;
+  try {
+    if (raw === undefined) throw new Error('no payload');
+    const parsed = JSON.parse(raw) as { tool_response?: unknown };
+    replacement = withheldFrom(parsed.tool_response, mcp);
+  } catch {
+    replacement = fixedWithheld(mcp);
+  }
+  emitOutput(mcp, replacement);
 }
 
 async function readRawStdin(): Promise<string> {
@@ -36,15 +93,15 @@ async function readRawStdin(): Promise<string> {
 }
 
 /**
- * Removes a saved/aborted window when its own session closes or navigates its
- * tab. Errors are swallowed: window trouble must never stop redaction, and a
- * corrupt window file is left for the guard (which fails closed on it).
+ * Removes a saved/aborted window when its own session closes its tab (Ruling 8:
+ * closing only — a navigate could lead straight back to the key page). Errors
+ * are swallowed: window trouble must never stop redaction, and a corrupt window
+ * file is left for the guard (which fails closed on it).
  */
 async function maybeCloseWindow(userData: string, input: HookInput): Promise<void> {
   try {
     const { chromeToolNameForAllow, tabOf } = await import('./guard-policy.ts');
-    const tool = chromeToolNameForAllow(input.tool_name);
-    if (tool !== 'tabs_close_mcp' && tool !== 'navigate') return;
+    if (chromeToolNameForAllow(input.tool_name) !== 'tabs_close_mcp') return;
     const { closeWindow, readWindow } = await import('../window.ts');
     const win = readWindow(userData);
     if (!win || win.status === 'open' || win.sessionId !== input.session_id) return;
@@ -57,8 +114,9 @@ async function maybeCloseWindow(userData: string, input: HookInput): Promise<voi
 
 export async function main(): Promise<void> {
   let mcp = false;
+  let raw: string | undefined;
   try {
-    const raw = await readRawStdin();
+    raw = await readRawStdin();
     // Best guess for the withheld form if the payload doesn't parse.
     mcp = /"tool_name"\s*:\s*"mcp__/.test(raw);
     const { parseHookInput } = await import('./io.ts');
@@ -75,7 +133,7 @@ export async function main(): Promise<void> {
     const r = redactOutput(input.tool_response, values);
     if (r.changed) emitOutput(mcp, r.output);
   } catch {
-    emitWithheld(mcp);
+    emitWithheld(mcp, raw);
   }
 }
 
