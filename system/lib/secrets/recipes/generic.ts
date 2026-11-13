@@ -39,7 +39,7 @@ export function buildLocateScript(opts: LocateOpts): string {
     const holders = Array.from(document.querySelectorAll('input, code, pre')).filter((h) => {
       if (!visible(h)) return false;
       const t = String(('value' in h && h.value) ? h.value : h.textContent || '').trim();
-      return VAL.test(t) || t.split(/[s=:]+/).some((p) => p !== '' && VAL.test(p));
+      return VAL.test(t) || t.split(/[\\s=:]+/).some((p) => p !== '' && VAL.test(p));
     });
     if (holders.length === 0) {
       return { found: false };

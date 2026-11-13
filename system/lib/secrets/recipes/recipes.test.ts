@@ -129,3 +129,24 @@ test('locate script: {found:false} when no key-shaped holder', () => {
   ];
   assert.deepEqual(JSON.parse(JSON.stringify(runScript(script, els))), { found: false });
 });
+
+test('locate script text splits on whitespace, = and : (escaped in the template)', () => {
+  const s = buildLocateScript({ buttonText: /copy/i, nearValueShape: /^lin_api_\w+$/ });
+  assert.ok(s.includes('[\\s=:]'));
+  assert.ok(!s.includes('[s=:]'));
+});
+
+test('locate script: space-separated holder and key containing the letter s', () => {
+  const script = buildLocateScript({ buttonText: /copy/i, nearValueShape: /^lin_api_\w+$/ });
+  for (const text of ['Your key lin_api_FAKE123456', 'lin_api_FAKEssss123s']) {
+    const els: StubEl[] = [
+      { tag: 'code', rect: { left: 0, top: 0, width: 100, height: 20 }, text },
+      { tag: 'button', rect: { left: 110, top: 0, width: 40, height: 20 }, text: 'Copy' },
+    ];
+    assert.deepEqual(JSON.parse(JSON.stringify(runScript(script, els))), {
+      found: true,
+      x: 130,
+      y: 10,
+    });
+  }
+});
