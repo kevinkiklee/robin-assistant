@@ -5,8 +5,11 @@ import { readDeliveries } from '../../../lib/secrets/deliveries.ts';
 import { skippedRedactFiles } from '../../../lib/secrets/hooks/redact-policy.ts';
 import {
   defaultDistRoot,
+  HOOK_TIMEOUT_SECONDS,
   installSecretHooks,
   SECRET_HOOK_SIGNATURE,
+  secretGuardCommand,
+  secretPostToolCommand,
 } from '../../../lib/secrets/install.ts';
 import { installRuleFile } from '../../../lib/secrets/rule-file.ts';
 import { secretsPaths } from '../../../lib/secrets/store.ts';
@@ -17,8 +20,14 @@ const OP_STALE_MS = 3_600_000;
 const EVENTS = ['PreToolUse', 'PostToolUse'] as const;
 const TELEMETRY = /^(OTEL_|CLAUDE_CODE_ENABLE_TELEMETRY$)/;
 
+interface HookEntry {
+  command?: unknown;
+  timeout?: unknown;
+  onFailure?: unknown;
+}
 interface HookGroup {
-  hooks?: { command?: unknown }[];
+  matcher?: unknown;
+  hooks?: HookEntry[];
 }
 interface Settings {
   env?: Record<string, unknown>;
@@ -34,18 +43,23 @@ function readSettings(path: string): Settings | 'corrupt' | null {
   }
 }
 
-function secretCommands(s: Settings, event: string): string[] {
-  const out: string[] = [];
+/** Every secret hook entry for `event`, with its group's matcher. */
+function secretEntries(s: Settings, event: string): { matcher: unknown; hook: HookEntry }[] {
+  const out: { matcher: unknown; hook: HookEntry }[] = [];
   const groups = s.hooks?.[event];
   for (const g of Array.isArray(groups) ? groups : []) {
     const hooks = g?.hooks;
     for (const h of Array.isArray(hooks) ? hooks : []) {
       if (typeof h?.command === 'string' && h.command.includes(SECRET_HOOK_SIGNATURE)) {
-        out.push(h.command);
+        out.push({ matcher: g.matcher, hook: h });
       }
     }
   }
   return out;
+}
+
+function secretCommands(s: Settings, event: string): string[] {
+  return secretEntries(s, event).map((e) => e.hook.command as string);
 }
 
 interface Sensitive {
@@ -110,27 +124,62 @@ function loosePerms(
   return loose;
 }
 
-/** Problems with the installed secret hooks themselves (what `repair` reinstalls for). */
+// userData, nodeBin, the hook script, and its distRoot.
+const INVOCATION_RE =
+  /ROBIN_USER_DATA_DIR='([^']*)' '([^']+)' '(([^']+)\/lib\/secrets\/hooks\/[^']+)'/;
+
+/**
+ * How an installed entry differs from the one `install` would write for the
+ * same userData / nodeBin / distRoot (parsed from its own command): command
+ * text, matcher, timeout, and onFailure ('block' on PreToolUse only).
+ */
+function entryDrift(
+  event: (typeof EVENTS)[number],
+  matcher: unknown,
+  hook: HookEntry,
+  paths: { userData: string; nodeBin: string; distRoot: string },
+): string[] {
+  const drift: string[] = [];
+  let expected: string | undefined;
+  try {
+    expected = event === 'PreToolUse' ? secretGuardCommand(paths) : secretPostToolCommand(paths);
+  } catch {
+    expected = undefined;
+  }
+  if (hook.command !== expected) drift.push('command');
+  if (matcher !== '.*') drift.push('matcher');
+  if (hook.timeout !== HOOK_TIMEOUT_SECONDS) drift.push('timeout');
+  const onFailure = event === 'PreToolUse' ? 'block' : undefined;
+  if (hook.onFailure !== onFailure) drift.push('onFailure');
+  return drift;
+}
+
+/** Problems with the installed secret hook entries (what `repair` reinstalls for). */
 function hookProblems(settings: Settings | 'corrupt' | null, sPath: string): string[] {
   const problems: string[] = [];
   if (settings === 'corrupt') return [`${sPath} is not valid JSON`];
   for (const event of EVENTS) {
-    if (!settings || secretCommands(settings, event).length === 0) {
+    if (!settings || secretEntries(settings, event).length === 0) {
       problems.push(`secret ${event} hook missing from ${sPath}`);
     }
   }
   if (!settings) return problems;
   const missing = new Set<string>();
   for (const event of EVENTS) {
-    for (const cmd of secretCommands(settings, event)) {
-      const m = /ROBIN_USER_DATA_DIR='[^']*' '([^']+)' '([^']+\/lib\/secrets\/hooks\/[^']+)'/.exec(
-        cmd,
-      );
+    for (const { matcher, hook } of secretEntries(settings, event)) {
+      const m = INVOCATION_RE.exec(hook.command as string);
       if (!m) {
         problems.push(`unrecognized secret hook command in ${sPath} — run robin secret install`);
         continue;
       }
-      for (const p of [m[1], m[2]]) if (!existsSync(p)) missing.add(p);
+      const [, userData, nodeBin, script, distRoot] = m;
+      const drift = entryDrift(event, matcher, hook, { userData, nodeBin, distRoot });
+      if (drift.length) {
+        problems.push(
+          `secret ${event} hook in ${sPath} differs from what install writes (${drift.join(', ')}) — run robin secret install`,
+        );
+      }
+      for (const p of [nodeBin, script]) if (!existsSync(p)) missing.add(p);
     }
   }
   for (const p of missing) {

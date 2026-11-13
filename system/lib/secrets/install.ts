@@ -15,7 +15,7 @@ import { secretsPaths } from './store.ts';
 /** Every secret hook command contains this; nothing else should. */
 export const SECRET_HOOK_SIGNATURE = '/lib/secrets/hooks/';
 
-const HOOK_TIMEOUT_SECONDS = 10;
+export const HOOK_TIMEOUT_SECONDS = 10;
 
 export interface SecretHookPaths {
   nodeBin: string;

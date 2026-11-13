@@ -326,3 +326,78 @@ test('repair leaves settings.json alone when the hooks are fine (N5)', async () 
   assert.equal(statSync(bak).mode & 0o777, 0o600);
   assert.equal((await f.inv().check()).ok, true);
 });
+
+interface RawSettings {
+  hooks: Record<
+    string,
+    { matcher?: string; hooks: { command: string; timeout?: number; onFailure?: string }[] }[]
+  >;
+}
+
+function editSettings(f: ReturnType<typeof fixture>, fn: (s: RawSettings) => void): string {
+  const p = join(f.home, '.claude', 'settings.json');
+  const cur = JSON.parse(readFileSync(p, 'utf8')) as RawSettings;
+  fn(cur);
+  writeFileSync(p, JSON.stringify(cur, null, 2));
+  return p;
+}
+
+test('a PreToolUse entry missing onFailure: block is flagged and repaired', async () => {
+  const f = fixture();
+  const p = editSettings(f, (s) => {
+    delete s.hooks.PreToolUse[0].hooks[0].onFailure;
+  });
+  const r = await f.inv().check();
+  assert.equal(r.ok, false);
+  assert.match(
+    r.message ?? '',
+    /secret PreToolUse hook .* differs from what install writes \(onFailure\)/,
+  );
+  await f.inv().repair?.();
+  assert.equal(JSON.parse(readFileSync(p, 'utf8')).hooks.PreToolUse[0].hooks[0].onFailure, 'block');
+  assert.deepEqual(await f.inv().check(), { ok: true });
+});
+
+test('a changed matcher, timeout or command is flagged and repaired', async () => {
+  const f = fixture();
+  editSettings(f, (s) => {
+    s.hooks.PostToolUse[0].matcher = 'Bash';
+    s.hooks.PostToolUse[0].hooks[0].timeout = 60;
+    s.hooks.PreToolUse[0].hooks[0].command = s.hooks.PreToolUse[0].hooks[0].command.replace(
+      ' || { echo',
+      ' ; true || { echo',
+    );
+  });
+  const m = (await f.inv().check()).message ?? '';
+  assert.match(m, /PostToolUse hook .* \(matcher, timeout\)/);
+  assert.match(m, /PreToolUse hook .* \(command\)/);
+  await f.inv().repair?.();
+  assert.deepEqual(await f.inv().check(), { ok: true });
+});
+
+test('repair for a stale window only never rewrites settings.json', async () => {
+  const f = fixture();
+  const s = join(f.home, '.claude', 'settings.json');
+  const past = new Date(Date.now() - 5_000).toISOString();
+  writeFileSync(
+    f.sp.window,
+    JSON.stringify({
+      sessionId: 's',
+      tabId: 1,
+      provider: 'acme',
+      name: 'NAME',
+      scriptHashes: [],
+      clipboardHashAtArm: 'h',
+      openedAt: past,
+      expiresAt: past,
+      status: 'open',
+    }),
+  );
+  const before = statSync(s).mtimeMs;
+  const bytes = readFileSync(s, 'utf8');
+  assert.equal((await f.inv().check()).ok, false);
+  await new Promise((r) => setTimeout(r, 20));
+  await f.inv().repair?.();
+  assert.equal(statSync(s).mtimeMs, before);
+  assert.equal(readFileSync(s, 'utf8'), bytes);
+});
