@@ -4,9 +4,10 @@
 //
 // Local modules load through dynamic import inside the try blocks: a static
 // import that failed to load would crash the process with exit 1, which Claude
-// Code treats as a non-blocking error and lets the call through.
+// Code treats as a non-blocking error and lets the call through. For the same
+// reason this file writes its deny JSON itself instead of using io.ts `emit`.
 
-import { statSync } from 'node:fs';
+import { readFileSync, statSync } from 'node:fs';
 
 function denyOut(reason: string): void {
   process.stdout.write(
@@ -20,15 +21,33 @@ function denyOut(reason: string): void {
   );
 }
 
+/** The current arm-session record, or undefined when absent or unparseable (both may be overwritten). */
+function readExistingArm(path: string): unknown {
+  let raw: string;
+  try {
+    raw = readFileSync(path, 'utf8');
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
+    throw e;
+  }
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return undefined;
+  }
+}
+
 export async function main(): Promise<void> {
   let userData: string;
+  let paths: { window: string; armSession: string };
   let hasWindow: boolean;
   try {
     const { resolveUserDataDir } = await import('../../paths.ts');
     const { secretsPaths } = await import('../store.ts');
     userData = resolveUserDataDir();
+    paths = secretsPaths(userData);
     // statSync throws on EACCES and the like, so only a clean ENOENT reads as absent.
-    hasWindow = statSync(secretsPaths(userData).window, { throwIfNoEntry: false }) !== undefined;
+    hasWindow = statSync(paths.window, { throwIfNoEntry: false }) !== undefined;
   } catch {
     denyOut('Secret guard could not check for an open secret window, so this call is blocked.');
     return;
@@ -56,6 +75,10 @@ export async function main(): Promise<void> {
       return;
     }
     if ('recordArm' in decision) {
+      if (policy.armBlocked(readExistingArm(paths.armSession), input.session_id, now)) {
+        denyOut(policy.ARM_BUSY_REASON);
+        return;
+      }
       writeArmSession(userData, {
         sessionId: input.session_id,
         tabId: decision.recordArm.tabId,

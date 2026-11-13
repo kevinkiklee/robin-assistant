@@ -6,7 +6,7 @@
 // carry anything.
 
 import { hashText } from '../clipboard.ts';
-import { isExpired, type SecretWindow } from '../window.ts';
+import { ARM_TTL_MS, isExpired, type SecretWindow } from '../window.ts';
 import type { HookInput } from './io.ts';
 
 export type GuardDecision =
@@ -14,14 +14,18 @@ export type GuardDecision =
   | { decision: 'deny'; reason: string }
   | { decision: 'allow'; recordArm: { tabId: number } };
 
-const CHROME = 'mcp__claude-in-chrome__';
+// Matched anywhere in the name so plugin-namespaced installs
+// (`mcp__plugin_…_claude-in-chrome__read_page`) are covered too.
+const CHROME = 'claude-in-chrome__';
+const COMPUTER_USE = 'computer-use__';
 const ARM_RE = /^robin secret arm --tab (\d+)\s*$/;
 const SET_OR_ABORT_RE = /^robin secret (set|abort)(\s|$)/;
 const ABORT_RE = /^robin secret abort(\s|$)/;
 // Superset of the brief's list: also refuses redirects, `$VAR`, subshells and
 // process substitution, and a CR that some shells treat as a separator.
 const SHELL_META_RE = /[;&|`$()<>\n\r]/;
-// Shell routes to the clipboard or to the screen/Chrome tab (best effort, not a sandbox).
+// Other sessions' shell commands: a substring tripwire, best effort and NOT a
+// security boundary. Quoting (pb""paste), variables or a script file evade it.
 const SCREEN_OR_CLIPBOARD_RE = /pbpaste|clipboard|pasteboard|screencapture|osascript/i;
 // claude-in-chrome tools that take no tab and return no page content.
 const TAB_AGNOSTIC = new Set([
@@ -30,13 +34,6 @@ const TAB_AGNOSTIC = new Set([
   'list_connected_browsers',
   'select_browser',
   'switch_browser',
-]);
-// Desktop tools that can see the Chrome window or read the clipboard.
-const OTHER_SESSION_DENY = new Set([
-  'mcp__computer-use__read_clipboard',
-  'mcp__computer-use__screenshot',
-  'mcp__computer-use__zoom',
-  'mcp__computer-use__computer_batch',
 ]);
 
 const ALLOW: GuardDecision = { decision: 'allow' };
@@ -47,6 +44,38 @@ function tabOf(input: Record<string, unknown>): number | undefined {
   if (typeof t === 'number' && Number.isFinite(t)) return t;
   if (typeof t === 'string' && /^\d+$/.test(t)) return Number(t);
   return undefined;
+}
+
+/** The claude-in-chrome tool's bare name (`read_page`), or undefined for other tools. */
+function chromeToolName(tool: string): string | undefined {
+  const i = tool.indexOf(CHROME);
+  return i < 0 ? undefined : tool.slice(i + CHROME.length);
+}
+
+/** C0 controls (U+0000–U+001F) or DEL. */
+function hasControlChar(s: string): boolean {
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    if (c <= 0x1f || c === 0x7f) return true;
+  }
+  return false;
+}
+
+/**
+ * Navigation may only leave for a real web page; closing the tab is the exit.
+ * Browsers strip tabs/newlines and leading C0 controls before parsing a URL, so
+ * `java\tscript:` is still javascript:. Refuse any control char, then require a
+ * parsed http(s) URL (bare hosts, `back`/`forward`, data:, blob:, file:,
+ * view-source: all fail).
+ */
+function isWebUrl(url: unknown): boolean {
+  if (typeof url !== 'string' || hasControlChar(url)) return false;
+  try {
+    const { protocol } = new URL(url);
+    return protocol === 'http:' || protocol === 'https:';
+  } catch {
+    return false;
+  }
 }
 
 function commandOf(input: HookInput): string | undefined {
@@ -60,7 +89,7 @@ function isRobinSecretCommand(cmd: string | undefined, re: RegExp): boolean {
 
 function armTab(input: HookInput): number | undefined {
   if (input.tool_name !== 'Bash') return undefined;
-  const m = ARM_RE.exec((commandOf(input) ?? '').trim());
+  const m = ARM_RE.exec(commandOf(input) ?? '');
   if (!m) return undefined;
   const n = Number(m[1]);
   return Number.isSafeInteger(n) ? n : undefined;
@@ -73,25 +102,19 @@ export function isArmCall(input: HookInput): boolean {
 
 function sameSessionAllowed(input: HookInput, win: SecretWindow): boolean {
   const ti = input.tool_input;
-  switch (input.tool_name) {
-    case 'ToolSearch':
+  if (input.tool_name === 'ToolSearch') return true;
+  if (input.tool_name === 'Bash') return isRobinSecretCommand(commandOf(input), SET_OR_ABORT_RE);
+  const chrome = chromeToolName(input.tool_name);
+  if (chrome === undefined || tabOf(ti) !== win.tabId) return false;
+  switch (chrome) {
+    case 'computer':
+      return ti.action === 'left_click';
+    case 'javascript_tool':
+      return typeof ti.text === 'string' && win.scriptHashes.includes(hashText(ti.text));
+    case 'tabs_close_mcp':
       return true;
-    case 'Bash':
-      return isRobinSecretCommand(commandOf(input), SET_OR_ABORT_RE);
-    case `${CHROME}computer`:
-      return ti.action === 'left_click' && tabOf(ti) === win.tabId;
-    case `${CHROME}javascript_tool`:
-      return (
-        tabOf(ti) === win.tabId &&
-        typeof ti.text === 'string' &&
-        win.scriptHashes.includes(hashText(ti.text))
-      );
-    case `${CHROME}tabs_close_mcp`:
-      return tabOf(ti) === win.tabId;
-    case `${CHROME}navigate`: {
-      const url = typeof ti.url === 'string' ? ti.url.trim().toLowerCase() : '';
-      return tabOf(ti) === win.tabId && !url.startsWith('javascript:');
-    }
+    case 'navigate':
+      return isWebUrl(ti.url);
     default:
       return false;
   }
@@ -116,10 +139,10 @@ function chromeTouchesWindowTab(tool: string, ti: Record<string, unknown>, tab: 
 
 function otherSessionDenied(input: HookInput, win: SecretWindow): boolean {
   const tool = input.tool_name;
-  if (tool.startsWith(CHROME)) {
-    return chromeTouchesWindowTab(tool.slice(CHROME.length), input.tool_input, win.tabId);
-  }
-  if (OTHER_SESSION_DENY.has(tool)) return true;
+  const chrome = chromeToolName(tool);
+  if (chrome !== undefined) return chromeTouchesWindowTab(chrome, input.tool_input, win.tabId);
+  // Every computer-use tool can see the desktop (Chrome included) or the clipboard.
+  if (tool.includes(COMPUTER_USE)) return true;
   // chrome-devtools-mcp addresses pages by its own index, not the tab id.
   if (tool.includes('chrome-devtools')) return true;
   const cmd = commandOf(input);
@@ -153,4 +176,19 @@ export function decideGuard(input: HookInput, win: SecretWindow | null, now: Dat
     : deny(
         `A blind secret window is open on tab ${win.tabId}. Allowed now: left_click, approved scripts, tabs_close_mcp or navigate on that tab, ToolSearch, and \`robin secret set …\` / \`robin secret abort\` (no shell operators).`,
       );
+}
+
+export const ARM_BUSY_REASON = 'Another session is arming a secret window; wait 10 s and retry.';
+
+/**
+ * Whether an existing arm-session record blocks `sessionId` from arming: it does
+ * when another session wrote it within the arm TTL. A record that is stale,
+ * future-dated, unreadable or our own may be overwritten.
+ */
+export function armBlocked(existing: unknown, sessionId: string, now: Date): boolean {
+  if (typeof existing !== 'object' || existing === null) return false;
+  const { sessionId: owner, at } = existing as { sessionId?: unknown; at?: unknown };
+  if (typeof owner !== 'string' || owner === sessionId || typeof at !== 'string') return false;
+  const age = now.getTime() - new Date(at).getTime();
+  return Number.isFinite(age) && age >= 0 && age <= ARM_TTL_MS;
 }

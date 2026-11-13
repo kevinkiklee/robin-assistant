@@ -27,7 +27,7 @@ export interface SecretWindow {
   status: 'open' | 'saved' | 'aborted';
 }
 
-const ARM_TTL_MS = 10_000;
+export const ARM_TTL_MS = 10_000;
 
 function writeJson(path: string, value: unknown): void {
   mkdirSync(dirname(path), { recursive: true, mode: 0o700 });

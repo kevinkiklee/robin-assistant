@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import test from 'node:test';
 import type { SecretWindow } from '../window.ts';
-import { decideGuard, type GuardDecision } from './guard-policy.ts';
+import { armBlocked, decideGuard, type GuardDecision } from './guard-policy.ts';
 import type { HookInput } from './io.ts';
 
 const sha = (s: string) => createHash('sha256').update(s).digest('hex');
@@ -183,4 +183,72 @@ test('other session: desktop screenshots and clipboard commands denied', () => {
 test('window present: robin secret arm is not recorded', () => {
   denied(decideGuard(bash('s1', 'robin secret arm --tab 7'), win, now));
   assert.deepEqual(decideGuard(bash('s2', 'robin secret arm --tab 7'), win, now), ALLOW);
+});
+
+// Fix round 1.
+const nav = (session: string, tabId: number, url: string) =>
+  call(session, chrome('navigate'), { tabId, url });
+test('same session: navigate with control-char javascript: bypasses denied', () => {
+  for (const url of [
+    'java\tscript:alert(1)',
+    'jav\nascript:alert(1)',
+    '\u0001javascript:alert(1)',
+  ]) {
+    denied(decideGuard(nav('s1', 7, url), win, now));
+  }
+});
+test('same session: navigate to non-web schemes denied', () => {
+  for (const url of [
+    'data:text/html,x',
+    'blob:https://x/1',
+    'view-source:https://x',
+    'file:///etc/hosts',
+  ]) {
+    denied(decideGuard(nav('s1', 7, url), win, now));
+  }
+});
+test('same session: navigate back/forward and bare hosts denied', () => {
+  for (const url of ['back', 'forward', 'dash.example.com']) {
+    denied(decideGuard(nav('s1', 7, url), win, now));
+  }
+});
+test('same session: navigate to an https page on the window tab allowed', () => {
+  assert.deepEqual(decideGuard(nav('s1', 7, 'https://dash.example.com/tokens'), win, now), ALLOW);
+});
+test('same session: navigate and tabs_close on another tab denied', () => {
+  denied(decideGuard(nav('s1', 8, 'https://dash.example.com/tokens'), win, now));
+  denied(decideGuard(call('s1', chrome('tabs_close_mcp'), { tabId: 8 }), win, now));
+});
+test('plugin-namespaced claude-in-chrome tools are matched', () => {
+  const ns = (t: string) => `mcp__plugin_cic_claude-in-chrome__${t}`;
+  denied(decideGuard(call('s2', ns('get_page_text'), { tabId: 7 }), win, now));
+  denied(decideGuard(call('s1', ns('read_page'), { tabId: 7 }), win, now));
+  assert.deepEqual(
+    decideGuard(call('s1', ns('computer'), { action: 'left_click', tabId: 7 }), win, now),
+    ALLOW,
+  );
+});
+test('other session: every computer-use tool denied', () => {
+  denied(decideGuard(call('s2', 'mcp__computer-use__left_click'), win, now));
+  denied(decideGuard(call('s2', 'mcp__computer-use__open_application'), win, now));
+});
+test('expired: robin secret abort chained with another command denied', () => {
+  denied(decideGuard(bash('s1', 'robin secret abort; x'), expired, now));
+});
+test('no window: arm with surrounding whitespace is not an arm call', () => {
+  assert.deepEqual(decideGuard(bash('s1', ' robin secret arm --tab 7'), null, now), ALLOW);
+  assert.deepEqual(decideGuard(bash('s1', 'robin secret arm --tab 7  '), null, now), {
+    decision: 'allow',
+    recordArm: { tabId: 7 },
+  });
+});
+test('armBlocked: fresh record from another session blocks; own, stale or junk does not', () => {
+  const at = (ms: number) => new Date(now.getTime() - ms).toISOString();
+  assert.equal(armBlocked({ sessionId: 's2', tabId: 7, at: at(5_000) }, 's1', now), true);
+  assert.equal(armBlocked({ sessionId: 's2', tabId: 7, at: at(10_000) }, 's1', now), true);
+  assert.equal(armBlocked({ sessionId: 's2', tabId: 7, at: at(10_001) }, 's1', now), false);
+  assert.equal(armBlocked({ sessionId: 's1', tabId: 7, at: at(1_000) }, 's1', now), false);
+  assert.equal(armBlocked({ sessionId: 's2', tabId: 7, at: at(-60_000) }, 's1', now), false);
+  assert.equal(armBlocked(undefined, 's1', now), false);
+  assert.equal(armBlocked({ sessionId: 's2', at: 'nope' }, 's1', now), false);
 });
