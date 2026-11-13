@@ -1,6 +1,14 @@
 import assert from 'node:assert/strict';
 import type { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -16,7 +24,13 @@ import {
   writeOp,
   writeWindow,
 } from '../../lib/secrets/window.ts';
-import { beginLines, runSecretCommand, type SecretDeps } from './secret.ts';
+import {
+  appleScriptString,
+  beginLines,
+  confirmScript,
+  runSecretCommand,
+  type SecretDeps,
+} from './secret.ts';
 
 const VALUE = 'spk_test_abcdEFGH1234ijklMNOP5678';
 const OTHER = 'spk_test_zyxwVUTS9876rqpoNMLK9999';
@@ -30,6 +44,9 @@ interface Harness {
   clip: { text: string; cleared: number; notes: string[] };
   spawned: string[][];
   restarts: number;
+  /** What the stubbed operator dialog answers (true = "Send"). */
+  approve: boolean;
+  confirms: { title: string; body: string }[];
   output(): string;
 }
 
@@ -61,6 +78,8 @@ function harness(over: Partial<SecretDeps> = {}): Harness {
     clip,
     spawned,
     restarts: 0,
+    approve: false,
+    confirms: [],
     deps: {},
     output: () => lines.join('\n'),
   };
@@ -81,6 +100,10 @@ function harness(over: Partial<SecretDeps> = {}): Harness {
     },
     sleep: async () => {},
     readStdin: async () => `${VALUE}\n`,
+    confirm: (title: string, body: string) => {
+      h.confirms.push({ title, body });
+      return h.approve;
+    },
     ...over,
   };
   return h;
@@ -274,26 +297,45 @@ test('set: rotation re-delivers recorded robin-env target and asks for restart',
   assert.equal(await run(h, ['set', 'SPK_TEST_KEY']), 0);
   assert.match(readFileSync(robinEnv, 'utf8'), new RegExp(`SPK_TEST_KEY=${VALUE}`));
   const out = h.output();
-  assert.match(out, /pipes to re-run \(ask the operator first\): vercel env add/);
+  assert.match(
+    out,
+    /pipes to re-run: run `robin secret pipe SPK_TEST_KEY -- vercel env add` \(a dialog asks the operator\)/,
+  );
   assert.match(out, /then: robin secret restart/);
 });
 
-test('pipe without --confirmed exits 2 and never spawns', async () => {
+test('pipe: operator Deny (or dialog give-up) exits 2 and never spawns', async () => {
   const h = harness();
   setMaster(h.userData, 'SPK_TEST_KEY', VALUE);
+  h.approve = false;
   const code = await run(h, ['pipe', 'SPK_TEST_KEY', '--', 'vercel', 'env', 'add', 'X']);
   assert.equal(code, 2);
   assert.match(
     h.output(),
-    /pipe sends SPK_TEST_KEY to an outside service; ask the operator, then re-run with --confirmed/,
+    /The operator did not approve sending SPK_TEST_KEY to vercel; nothing sent\./,
   );
   assert.deepEqual(h.spawned, []);
+  assert.equal(h.confirms.length, 1);
+  assert.match(h.confirms[0].body, /SPK_TEST_KEY/);
+  assert.match(h.confirms[0].body, /vercel env add X/);
+  assert.ok(!h.confirms[0].body.includes(VALUE));
+  assert.equal(readDeliveries(h.userData).SPK_TEST_KEY, undefined);
 });
 
-test('pipe --confirmed: spawns and records the target', async () => {
+test('pipe: the old --confirmed flag is not accepted and never spawns', async () => {
   const h = harness();
   setMaster(h.userData, 'SPK_TEST_KEY', VALUE);
-  assert.equal(await run(h, ['pipe', 'SPK_TEST_KEY', '--confirmed', '--', 'gh', 'secret']), 0);
+  h.approve = true;
+  assert.equal(await run(h, ['pipe', 'SPK_TEST_KEY', '--confirmed', '--', 'gh', 'secret']), 2);
+  assert.deepEqual(h.spawned, []);
+  assert.deepEqual(h.confirms, []);
+});
+
+test('pipe: operator Send spawns and records the target', async () => {
+  const h = harness();
+  setMaster(h.userData, 'SPK_TEST_KEY', VALUE);
+  h.approve = true;
+  assert.equal(await run(h, ['pipe', 'SPK_TEST_KEY', '--', 'gh', 'secret']), 0);
   assert.deepEqual(h.spawned, [['gh', 'secret']]);
   assert.deepEqual(readDeliveries(h.userData).SPK_TEST_KEY, [
     { kind: 'pipe', argv: ['gh', 'secret'] },
@@ -487,8 +529,13 @@ test('no subcommand output ever contains the fixture value', async () => {
   await run(h, ['deliveries']);
   await run(h, ['deliveries', '--prune']);
   await run(h, ['exec', 'SPK_TEST_KEY', '--', 'env']);
+  // exec/pipe use a fake spawn, so this proves only that the CLI's own lines
+  // carry no value; a real child that prints its input is caught by the
+  // PostToolUse redaction hook, the actual backstop.
+  h.approve = false;
   await run(h, ['pipe', 'SPK_TEST_KEY', '--', 'cat']);
-  await run(h, ['pipe', 'SPK_TEST_KEY', '--confirmed', '--', 'cat']);
+  h.approve = true;
+  await run(h, ['pipe', 'SPK_TEST_KEY', '--', 'cat']);
   await run(h, ['log', '--limit', '50']);
   await run(h, ['restart']);
   await run(h, ['nonsense']);
@@ -508,10 +555,151 @@ test('no subcommand output ever contains the fixture value', async () => {
     /window closed/,
     /refused: ANTHROPIC_API_KEY/,
     /IMPORTED_TEST_TOKEN …9999 \(33\)/,
-    /pipe sends SPK_TEST_KEY/,
+    /did not approve sending SPK_TEST_KEY/,
     /piped SPK_TEST_KEY …5678 \(33\) to cat · exit 0/,
     /\d{4}-\d\d-\d\dT\S+ set - SPK_TEST_KEY …5678 \(33\)/,
   ]) {
     assert.match(out, re);
   }
+});
+
+test('set --wait with no window: only a copy made during the wait counts', async () => {
+  const h = harness();
+  setMaster(h.userData, 'SPK_TEST_KEY', OTHER);
+  h.clip.text = 'https://example.com/a-long-url-that-matches-the-default-shape';
+  assert.equal(await run(h, ['set', 'SPK_TEST_KEY', '--wait']), 1);
+  assert.equal(getMaster(h.userData, 'SPK_TEST_KEY'), OTHER);
+  let reads = 0;
+  h.deps.clipboard = {
+    read: () =>
+      ++reads > 3 ? VALUE : 'https://example.com/a-long-url-that-matches-the-default-shape',
+    clear: () => {},
+    notify: () => {},
+  };
+  assert.equal(await run(h, ['set', 'SPK_TEST_KEY', '--wait']), 0);
+  assert.equal(getMaster(h.userData, 'SPK_TEST_KEY'), VALUE);
+});
+
+test('set --from-clipboard with no window: refused, nothing read', async () => {
+  const h = harness();
+  h.clip.text = VALUE;
+  let reads = 0;
+  h.deps.clipboard = {
+    read: () => {
+      reads++;
+      return VALUE;
+    },
+    clear: () => {},
+    notify: () => {},
+  };
+  assert.equal(await run(h, ['set', 'SPK_TEST_KEY', '--from-clipboard']), 2);
+  assert.match(h.output(), /no armed window — use --wait so the copy is fresh/);
+  assert.equal(reads, 0);
+  assert.equal(getMaster(h.userData, 'SPK_TEST_KEY'), undefined);
+});
+
+test('set: pending create op without a window is refused for --wait and --from-clipboard', async () => {
+  const h = harness();
+  await run(h, ['begin', 'acme', 'SPK_TEST_KEY']);
+  for (const src of ['--wait', '--from-clipboard']) {
+    assert.equal(await run(h, ['set', 'SPK_TEST_KEY', src]), 2);
+  }
+  assert.match(
+    h.output(),
+    /pending manual for SPK_TEST_KEY has no armed window; run `robin secret arm --tab <id>` first/,
+  );
+});
+
+test('every --wait suggestion carries the Bash timeout hint', async () => {
+  const h = harness();
+  await openWindow(h);
+  await run(h, ['set', 'SPK_TEST_KEY']); // unchanged → retry line
+  const lines = h
+    .output()
+    .split('\n')
+    .filter((l) => l.includes('--wait'));
+  assert.ok(lines.length >= 2);
+  for (const l of lines) assert.match(l, /timeout of at least 150000 ms/);
+});
+
+test('set --wait timeout in get mode: no live-key warning', async () => {
+  const h = harness();
+  writeOp(h.userData, {
+    provider: 'ebird',
+    name: 'SPK_TEST_KEY',
+    mode: 'get',
+    targets: [],
+    startedAt: NOW.toISOString(),
+  });
+  rawWindow(h);
+  h.deps.now = () => new Date(NOW.getTime() - 1000); // window not yet expired
+  assert.equal(await run(h, ['set', 'SPK_TEST_KEY', '--wait']), 1);
+  assert.match(h.output(), /No copy seen in 2 min; nothing saved\./);
+  assert.doesNotMatch(h.output(), /may be live/);
+});
+
+test('log --limit 0 prints nothing', async () => {
+  const h = harness();
+  await run(h, ['begin', 'acme', 'SPK_TEST_KEY']);
+  writeArmSession(h.userData, { sessionId: 's', tabId: 7, at: NOW.toISOString() });
+  await run(h, ['arm', '--tab', '7']);
+  const before = h.lines.length;
+  assert.equal(await run(h, ['log', '--limit', '0']), 0);
+  assert.equal(h.lines.length, before);
+});
+
+test('abort: unreadable window → one message plus the live-key warning', async () => {
+  const h = harness();
+  await run(h, ['begin', 'acme', 'SPK_TEST_KEY', '--rotate']);
+  writeFileSync(secretsPaths(h.userData).window, '{}');
+  assert.equal(await run(h, ['abort']), 0);
+  const out = h.output();
+  assert.match(out, /window closed \(its file was unreadable\)/);
+  assert.match(out, /robin-spk-test-key-20261113 may be live and unsaved/);
+  assert.equal(existsSync(secretsPaths(h.userData).window), false);
+});
+
+test('arm: op with an unparseable startedAt counts as stale', async () => {
+  const h = harness();
+  writeOp(h.userData, {
+    provider: 'acme',
+    name: 'SPK_TEST_KEY',
+    mode: 'manual',
+    targets: [],
+    startedAt: 'not a date',
+  });
+  writeArmSession(h.userData, { sessionId: 's', tabId: 7, at: NOW.toISOString() });
+  assert.equal(await run(h, ['arm', '--tab', '7']), 2);
+  assert.match(h.output(), /over 1 h old/);
+  assert.equal(readWindow(h.userData), null);
+});
+
+test('set: target written but registry write fails → delivered but not recorded', async () => {
+  const h = harness();
+  await openWindow(h);
+  h.clip.text = VALUE;
+  const envLocal = join(h.root, '.env.local');
+  const runtime = join(h.userData, 'state', 'runtime');
+  chmodSync(runtime, 0o500); // registry (and window/op/log) writes fail
+  try {
+    await run(h, ['set', 'SPK_TEST_KEY', '--to', envLocal]);
+  } finally {
+    chmodSync(runtime, 0o700);
+  }
+  const out = h.output();
+  assert.match(readFileSync(envLocal, 'utf8'), new RegExp(`SPK_TEST_KEY=${VALUE}`));
+  assert.match(out, /delivered: 1 files/);
+  assert.match(out, /delivered but not recorded \(a rotation won't update it\): \S+\.env\.local/);
+  assert.doesNotMatch(out, /failed: \S+\.env\.local/);
+  assert.ok(!out.includes(VALUE));
+});
+
+test('confirm dialog script: escapes \\ and ", Deny is default and cancel, gives up at 120 s', () => {
+  assert.equal(appleScriptString('a"b\\c\nd'), '"a\\"b\\\\c\\nd"');
+  const script = confirmScript('T', 'say "hi"');
+  assert.match(
+    script,
+    /buttons \{"Deny", "Send"\} default button "Deny" cancel button "Deny" giving up after 120$/,
+  );
+  assert.ok(script.includes('"say \\"hi\\""'));
 });

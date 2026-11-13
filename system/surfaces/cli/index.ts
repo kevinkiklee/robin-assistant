@@ -63,8 +63,8 @@ ADVANCED
                         Blind key window: open it, save the copied key, or abandon it
   secret list | log [--limit N] | deliveries [--prune] | deliver <NAME> | import
                         Vault names + fingerprints (never values), history, delivery targets
-  secret exec <NAME>... -- <cmd> | pipe <NAME> --confirmed -- <cmd> | restart
-                        Run with keys in env; send one to a service CLI; bounce the daemon
+  secret exec <NAME>... -- <cmd> | pipe <NAME> -- <cmd> | restart
+                        Run with keys in env; send one to a service CLI (operator dialog); bounce the daemon
   metrics --agents      Per-handler agent ROI: runs, spend, outcomes, last did-work
   memory audit-sample [N]   Recent extractions grouped by personal domain
   memory compact-sessions [--apply]   Keep only the operator's turns in captured sessions > 90 days old

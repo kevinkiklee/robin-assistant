@@ -1,7 +1,7 @@
 // `robin secret …` — the agent-facing key manager. Everything printed here is
 // read by an AI agent, so no path prints a key value: fingerprints only.
 
-import { spawnSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -68,12 +68,15 @@ export interface SecretDeps {
   restartDaemon: (userData: string) => Promise<boolean>;
   sleep: (ms: number) => Promise<void>;
   readStdin: () => Promise<string>;
+  /** Operator-bound yes/no (macOS dialog). True only for an explicit "Send". */
+  confirm: (title: string, body: string) => boolean;
 }
 
 const WINDOW_MS = 120_000;
 const WAIT_MS = 120_000;
 const POLL_MS = 1_000;
 const OP_STALE_MS = 60 * 60_000;
+const WAIT_HINT = '(give the Bash call a timeout of at least 150000 ms)';
 const ALREADY_OPEN = 'A secret window is already open; run `robin secret abort` first.';
 
 const USAGE = `usage: robin secret <command>
@@ -83,7 +86,7 @@ const USAGE = `usage: robin secret <command>
   abort
   list
   exec <NAME>... -- <cmd…>
-  pipe <NAME> --confirmed -- <cmd…>
+  pipe <NAME> -- <cmd…>          (a dialog asks the operator first)
   deliver <NAME>
   deliveries [--prune]
   restart
@@ -273,6 +276,12 @@ function opDate(op: SecretOp | null, now: Date): Date {
   return Number.isNaN(d.getTime()) ? now : d;
 }
 
+/** Unparseable startedAt counts as stale. */
+function opStale(op: SecretOp, now: Date): boolean {
+  const t = new Date(op.startedAt).getTime();
+  return Number.isNaN(t) || now.getTime() - t > OP_STALE_MS;
+}
+
 // ── begin ────────────────────────────────────────────────────────────────
 
 const ROTATE_CREATE_REVOKE =
@@ -294,7 +303,7 @@ export function beginLines(a: {
       `${provider} · manual · ${name}`,
       `dashboard key name: ${keyName}`,
       delivers,
-      `No recipe for ${provider}. Drive the dashboard up to the reveal, ask for OK, then run: robin secret arm --tab <id>; click Create; robin secret set ${name} --wait`,
+      `No recipe for ${provider}. Drive the dashboard up to the reveal, ask for OK, then run: robin secret arm --tab <id>; click Create; robin secret set ${name} --wait ${WAIT_HINT}`,
     ];
   }
   if (recipe.rotate === 'oauth') {
@@ -333,7 +342,7 @@ export function beginLines(a: {
         : ROTATE_CREATE_REVOKE,
     );
   }
-  const fallback = `If a script returns {found:false}: robin secret set ${name} --wait`;
+  const fallback = `If a script returns {found:false}: robin secret set ${name} --wait ${WAIT_HINT}`;
   if (mode === 'get') {
     lines.push(
       `next: tabs_create, then robin secret arm --tab <id>; navigate the tab to the url; run locateReveal if the key is hidden and locateCopy, clicking each {x,y}; robin secret set ${name} --from-clipboard. ${fallback}`,
@@ -399,7 +408,7 @@ function cmdArm(ctx: Ctx, args: string[]): number {
   if (!op) {
     throw new CliExit(2, 'No pending secret op; run `robin secret begin <provider> <NAME>` first.');
   }
-  if (now.getTime() - opDate(op, now).getTime() > OP_STALE_MS) {
+  if (opStale(op, now)) {
     throw new CliExit(2, 'The pending secret op is over 1 h old; run `robin secret begin` again.');
   }
   const session = takeArmSession(userData, now);
@@ -450,15 +459,14 @@ async function readValue(
 ): Promise<string> {
   const { d } = ctx;
   const { name, provider, win, shape } = a;
-  const retry = `Click Copy (locateCopy), or run robin secret set ${name} --wait.`;
-  const sinceHash = win?.clipboardHashAtArm ?? '';
+  const retry = `Click Copy (locateCopy), or run robin secret set ${name} --wait ${WAIT_HINT}.`;
   switch (a.source) {
     case 'stored': {
       const v = getMaster(d.userData, name);
       if (v === undefined) {
         throw new CliExit(
           2,
-          `${name} is not in the vault; copy it and run robin secret set ${name} --from-clipboard (or --stdin).`,
+          `${name} is not in the vault; copy it with robin secret set ${name} --wait ${WAIT_HINT}, or --stdin.`,
         );
       }
       return v;
@@ -473,7 +481,8 @@ async function readValue(
       return v;
     }
     case 'from-clipboard': {
-      const r = takeFreshCopy(d.clipboard, sinceHash, shape);
+      // cmdSet refuses this source without a window, so the arm-time hash exists.
+      const r = takeFreshCopy(d.clipboard, win?.clipboardHashAtArm ?? '', shape);
       if (r.ok) return r.value;
       if (r.reason === 'unchanged') {
         throw new CliExit(
@@ -492,6 +501,9 @@ async function readValue(
       const now = d.now();
       if (win)
         updateWindow(d.userData, { expiresAt: new Date(now.getTime() + WAIT_MS).toISOString() });
+      // Without a window the baseline is the clipboard as it is now, so only a
+      // copy made during the wait counts — never whatever was already there.
+      const sinceHash = win ? win.clipboardHashAtArm : hashText(d.clipboard.read());
       const r = await waitForFreshCopy(d.clipboard, sinceHash, shape, {
         timeoutMs: WAIT_MS,
         pollMs: POLL_MS,
@@ -499,6 +511,7 @@ async function readValue(
         message: `Click Copy on the ${provider} tab`,
       });
       if (r.ok) return r.value;
+      if (a.op?.mode === 'get') throw new CliExit(1, 'No copy seen in 2 min; nothing saved.');
       throw new CliExit(
         1,
         `No copy seen in 2 min. ${liveKeyWarning(provider, name, opDate(a.op, now))}`,
@@ -522,14 +535,21 @@ function scrub(ctx: Ctx, msg: string): string {
 
 interface DeliveryReport {
   written: DeliveryTarget[];
+  /** Written, but the registry write failed: a rotation won't reach it. */
+  unrecorded?: { target: DeliveryTarget; error: string }[];
   missing: DeliveryTarget[];
   failed: { target: DeliveryTarget; error: string }[];
   pipes: DeliveryTarget[];
 }
 
-function printReport(ctx: Ctx, r: DeliveryReport): void {
+function printReport(ctx: Ctx, name: string, r: DeliveryReport): void {
   const { out } = ctx.d;
   out(`delivered: ${r.written.length} files`);
+  for (const u of r.unrecorded ?? []) {
+    out(
+      `delivered but not recorded (a rotation won't update it): ${where(u.target)} — ${scrub(ctx, u.error)}`,
+    );
+  }
   if (r.missing.length) {
     out(
       `missing: ${r.missing.map(where).join(', ')} (robin secret deliveries --prune forgets them)`,
@@ -537,7 +557,11 @@ function printReport(ctx: Ctx, r: DeliveryReport): void {
   }
   for (const f of r.failed) out(`failed: ${where(f.target)} — ${scrub(ctx, f.error)}`);
   for (const p of r.pipes) {
-    if (p.kind === 'pipe') out(`pipes to re-run (ask the operator first): ${p.argv.join(' ')}`);
+    if (p.kind === 'pipe') {
+      out(
+        `pipes to re-run: run \`robin secret pipe ${name} -- ${p.argv.join(' ')}\` (a dialog asks the operator)`,
+      );
+    }
   }
 }
 
@@ -576,6 +600,20 @@ async function cmdSet(ctx: Ctx, args: string[]): Promise<number> {
 
   // No source flag and no window: deliver the stored value (never a stray clipboard).
   const source: Source = sources[0] ?? (win ? 'from-clipboard' : 'stored');
+  if (!win && (source === 'from-clipboard' || source === 'wait')) {
+    if (op && op.mode !== 'get' && !opStale(op, now)) {
+      throw new CliExit(
+        2,
+        `pending ${op.mode} for ${name} has no armed window; run \`robin secret arm --tab <id>\` first`,
+      );
+    }
+    if (source === 'from-clipboard') {
+      throw new CliExit(
+        2,
+        `no armed window — use --wait so the copy is fresh ${WAIT_HINT}, or --stdin`,
+      );
+    }
+  }
   const value = await readValue(ctx, { source, name, provider: label, win, op, shape });
   ctx.values.push(value);
 
@@ -609,10 +647,18 @@ async function cmdSet(ctx: Ctx, args: string[]): Promise<number> {
     if (t.kind === 'pipe') continue;
     try {
       deliverOne(ctx, t, value);
-      addDelivery(d.userData, name, t);
-      report.written.push(t);
     } catch (err) {
       report.failed.push({ target: t, error: scrub(ctx, (err as Error).message) });
+      continue;
+    }
+    report.written.push(t);
+    try {
+      addDelivery(d.userData, name, t);
+    } catch (err) {
+      report.unrecorded = [
+        ...(report.unrecorded ?? []),
+        { target: t, error: scrub(ctx, (err as Error).message) },
+      ];
     }
   }
 
@@ -636,7 +682,7 @@ async function cmdSet(ctx: Ctx, args: string[]): Promise<number> {
   );
 
   d.out(`${name} ${fingerprint(value)} · ${result === 'saved' ? 'saved' : 'already current'}`);
-  printReport(ctx, report);
+  printReport(ctx, name, report);
   for (const p of problems) d.out(`failed: ${p}`);
   if (win) d.out('next: close the tab');
   if (report.written.some((t) => t.kind === 'robin-env')) d.out('then: robin secret restart');
@@ -648,18 +694,23 @@ async function cmdSet(ctx: Ctx, args: string[]): Promise<number> {
 function cmdAbort(ctx: Ctx): number {
   const { d } = ctx;
   let win: SecretWindow | null = null;
+  let unreadable = false;
   try {
     win = readWindow(d.userData);
   } catch {
-    closeWindow(d.userData);
-    d.out('removed an unreadable secret window file');
+    unreadable = true;
   }
   const op = readOp(d.userData);
-  if (win?.status === 'open') {
+  const now = d.now();
+  // Manual mode counts as live-key risk: its flow clicks Create too.
+  if (unreadable) {
+    closeWindow(d.userData);
+    d.out('window closed (its file was unreadable)');
+    if (op && op.mode !== 'get') d.out(liveKeyWarning(op.provider, op.name, opDate(op, now)));
+  } else if (win?.status === 'open') {
     updateWindow(d.userData, { status: 'aborted' });
     d.out('window aborted; close the tab to end it');
-    // Manual mode counts: its flow clicks Create too.
-    if (op?.mode !== 'get') d.out(liveKeyWarning(win.provider, win.name, opDate(op, d.now())));
+    if (op?.mode !== 'get') d.out(liveKeyWarning(win.provider, win.name, opDate(op, now)));
   } else if (win) {
     closeWindow(d.userData);
     d.out('window closed');
@@ -743,7 +794,9 @@ function cmdLog(ctx: Ctx, args: string[]): number {
   const p = parse(args, ['limit']);
   const raw = flag(p, 'limit') ?? '20';
   if (!/^\d+$/.test(raw)) throw new CliExit(2, '--limit takes a whole number');
-  const entries = readLog(ctx.d.userData).slice(-Number(raw));
+  const limit = Number(raw);
+  if (limit === 0) return 0; // slice(-0) would return every entry
+  const entries = readLog(ctx.d.userData).slice(-limit);
   if (!entries.length) ctx.d.out('no secret log entries');
   for (const e of entries) {
     ctx.d.out(
@@ -770,22 +823,30 @@ function cmdExec(ctx: Ctx, args: string[]): number {
 
 function cmdPipe(ctx: Ctx, args: string[]): number {
   const { d } = ctx;
-  const p = parse(args, ['confirmed']);
+  const p = parse(args, []);
   const name = allowName(p.pos[0]);
-  if (p.pos.length > 1 || !p.rest?.length) throw new CliExit(2, USAGE);
-  if (!p.flags.has('confirmed')) {
-    throw new CliExit(
-      2,
-      `pipe sends ${name} to an outside service; ask the operator, then re-run with --confirmed`,
-    );
-  }
+  const argv = p.rest;
+  if (p.pos.length > 1 || !argv?.length) throw new CliExit(2, USAGE);
   const value = getMaster(d.userData, name);
   if (value === undefined) throw new CliExit(1, `${name} is not in the vault`);
   ctx.values.push(value);
-  const code = runPipe(p.rest, value, d.spawn);
-  if (code === 0) addDelivery(d.userData, name, { kind: 'pipe', argv: p.rest });
+  // Operator-bound: an agent's own say-so (a flag) is not consent to send a key out.
+  const shown = argv.map((a) => (/^[\w@%+=:,./-]+$/.test(a) ? a : JSON.stringify(a))).join(' ');
+  const approved = d.confirm(
+    'Robin: send a key to an outside service?',
+    `Send ${name} on stdin to:\n\n${shown}\n\nOnly Send if you asked for this.`,
+  );
+  if (!approved) {
+    appendLog(d.userData, { op: 'pipe-denied', name });
+    throw new CliExit(
+      2,
+      `The operator did not approve sending ${name} to ${argv[0]}; nothing sent.`,
+    );
+  }
+  const code = runPipe(argv, value, d.spawn);
+  if (code === 0) addDelivery(d.userData, name, { kind: 'pipe', argv });
   appendLog(d.userData, { op: 'pipe', name, fingerprint: fingerprint(value) });
-  d.out(`piped ${name} ${fingerprint(value)} to ${p.rest[0]} · exit ${code}`);
+  d.out(`piped ${name} ${fingerprint(value)} to ${argv[0]} · exit ${code}`);
   return code === 0 ? 0 : 1;
 }
 
@@ -800,7 +861,7 @@ function cmdDeliver(ctx: Ctx, args: string[]): number {
   const r = redeliverFileTargets(d.userData, name, value);
   appendLog(d.userData, { op: 'deliver', name, fingerprint: fingerprint(value) });
   d.out(`${name} ${fingerprint(value)}`);
-  printReport(ctx, r);
+  printReport(ctx, name, r);
   if (r.written.some((t) => t.kind === 'robin-env')) d.out('then: robin secret restart');
   return r.failed.length ? 1 : 0;
 }
@@ -830,6 +891,36 @@ function cmdImport(ctx: Ctx): number {
 
 // ── entry ────────────────────────────────────────────────────────────────
 
+/** AppleScript string literal: escape `\` and `"`, spell out newlines, drop other controls. */
+export function appleScriptString(s: string): string {
+  const body = s
+    .replace(/\\/g, '\\\\')
+    .replace(/"/g, '\\"')
+    .replace(/\r?\n/g, '\\n')
+    // biome-ignore lint/suspicious/noControlCharactersInRegex: stripping controls is the point
+    .replace(/[\x00-\x1f\x7f]/g, ' ');
+  return `"${body}"`;
+}
+
+/** The dialog script; only an explicit "Send" (not a give-up) approves. */
+export function confirmScript(title: string, body: string): string {
+  return `display dialog ${appleScriptString(body)} with title ${appleScriptString(title)} buttons {"Deny", "Send"} default button "Deny" cancel button "Deny" giving up after 120`;
+}
+
+/** Deny closes the dialog with error -128 (execFileSync throws) → false. */
+function macConfirm(title: string, body: string): boolean {
+  try {
+    const out = execFileSync('osascript', ['-e', confirmScript(title, body)], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+      timeout: 130_000,
+    });
+    return /button returned:Send\b/.test(out) && !/gave up:true/.test(out);
+  } catch {
+    return false;
+  }
+}
+
 async function readAllStdin(): Promise<string> {
   const chunks: Buffer[] = [];
   for await (const c of process.stdin) chunks.push(Buffer.from(c));
@@ -854,6 +945,7 @@ async function withDefaults(deps: Partial<SecretDeps>): Promise<SecretDeps> {
     },
     sleep: (ms) => new Promise<void>((r) => setTimeout(r, ms)),
     readStdin: readAllStdin,
+    confirm: macConfirm,
     ...deps,
     userData,
   };
