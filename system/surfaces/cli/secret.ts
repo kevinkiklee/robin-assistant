@@ -73,6 +73,8 @@ export interface SecretDeps {
   confirm: (title: string, body: string) => boolean;
   /** HOME whose ~/.claude gets the hooks and rule file (`install`/`uninstall`). */
   home: string;
+  /** Compiled hooks root for `install`; undefined → this repo's dist/. */
+  distRoot?: string;
 }
 
 const WINDOW_MS = 120_000;
@@ -942,9 +944,14 @@ async function cmdInstall(ctx: Ctx): Promise<number> {
   const { d } = ctx;
   const { installSecretHooks } = await import('../../lib/secrets/install.ts');
   const { installRuleFile } = await import('../../lib/secrets/rule-file.ts');
-  const r = installSecretHooks({ home: d.home, userData: d.userData });
+  const r = installSecretHooks({ home: d.home, userData: d.userData, distRoot: d.distRoot });
+  if (r.skipped) {
+    // Nothing installed, rule file included: it would send agents to a flow
+    // whose `arm` needs the hooks.
+    d.out(`secret hooks: skipped — ${r.message}`);
+    return 1;
+  }
   d.out(`hooks: ${r.replaced ? 'updated' : 'installed'} PreToolUse + PostToolUse in ${r.path}`);
-  if (r.warning) d.out(`warning: ${r.warning}`);
   d.out(`rule file: ${installRuleFile(d.home)}`);
   return 0;
 }
@@ -954,9 +961,10 @@ async function cmdUninstall(ctx: Ctx): Promise<number> {
   const { uninstallSecretHooks } = await import('../../lib/secrets/install.ts');
   const { uninstallRuleFile } = await import('../../lib/secrets/rule-file.ts');
   const r = uninstallSecretHooks({ home: d.home });
-  d.out(r.replaced ? `hooks: removed from ${r.path}` : 'hooks: none installed');
+  if (r.unreadable) d.out(`hooks: settings.json unreadable (${r.path}); nothing removed`);
+  else d.out(r.replaced ? `hooks: removed from ${r.path}` : 'hooks: none installed');
   d.out(uninstallRuleFile(d.home) ? 'rule file: removed' : 'rule file: none installed');
-  return 0;
+  return r.unreadable ? 1 : 0;
 }
 
 // ── entry ────────────────────────────────────────────────────────────────

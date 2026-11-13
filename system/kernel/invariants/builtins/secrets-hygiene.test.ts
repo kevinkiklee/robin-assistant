@@ -311,3 +311,18 @@ test('an unreadable redact-files list is reported', async () => {
   const r = await f.inv().check();
   assert.match(r.message ?? '', /redact-files\.txt is unreadable/);
 });
+
+test('repair leaves settings.json alone when the hooks are fine (N5)', async () => {
+  const f = fixture();
+  const s = join(f.home, '.claude', 'settings.json');
+  const compact = JSON.stringify({ ...JSON.parse(readFileSync(s, 'utf8')), theme: 'dark' });
+  writeFileSync(s, compact);
+  const bak = `${f.sp.vault}.bak-20261113T010101`;
+  writeFileSync(bak, 'x\n');
+  chmodSync(bak, 0o644);
+  assert.equal((await f.inv().check()).ok, false);
+  await f.inv().repair?.();
+  assert.equal(readFileSync(s, 'utf8'), compact);
+  assert.equal(statSync(bak).mode & 0o777, 0o600);
+  assert.equal((await f.inv().check()).ok, true);
+});

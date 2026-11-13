@@ -782,6 +782,18 @@ test('install / uninstall: hooks pinned to this userData + rule file, under a te
   const h = harness();
   const home = join(h.root, 'home');
   h.deps.home = home;
+  const dist = join(h.root, 'dist');
+  h.deps.distRoot = dist;
+  // Not built: exit 1, nothing written (Ruling 16).
+  assert.equal(await run(h, ['install']), 1);
+  assert.match(
+    h.output(),
+    /secret hooks: skipped — run pnpm build first, then robin secret install/,
+  );
+  assert.equal(existsSync(join(home, '.claude')), false);
+  mkdirSync(join(dist, 'lib', 'secrets', 'hooks'), { recursive: true });
+  writeFileSync(join(dist, 'lib', 'secrets', 'hooks', 'guard.js'), '');
+  writeFileSync(join(dist, 'lib', 'secrets', 'hooks', 'post-tool.js'), '');
   assert.equal(await run(h, ['install']), 0);
   const settingsPath = join(home, '.claude', 'settings.json');
   const settings = JSON.parse(readFileSync(settingsPath, 'utf8'));
@@ -842,4 +854,15 @@ test('beginLines: "run precheck" only when the recipe has one; wait hint has no 
   assert.match(withIt, /run precheck \(must return \{ok:true\}\)/);
   assert.match(without, /--wait — give the Bash call a timeout of at least 150000 ms/);
   assert.doesNotMatch(without, /\(give the Bash call/);
+});
+
+test('uninstall: a corrupt settings.json says unreadable, exit 1', async () => {
+  const h = harness();
+  const home = join(h.root, 'home');
+  h.deps.home = home;
+  mkdirSync(join(home, '.claude'), { recursive: true });
+  writeFileSync(join(home, '.claude', 'settings.json'), '{ nope');
+  assert.equal(await run(h, ['uninstall']), 1);
+  assert.match(h.output(), /hooks: settings\.json unreadable/);
+  assert.doesNotMatch(h.output(), /none installed \(hooks\)|hooks: none installed/);
 });

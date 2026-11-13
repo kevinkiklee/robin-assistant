@@ -44,6 +44,14 @@ interface Fixture {
   settingsPath: string;
 }
 
+/** Empty compiled hook scripts, so install doesn't skip. */
+function builtDist(distRoot: string): void {
+  const dir = join(distRoot, 'lib', 'secrets', 'hooks');
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, 'guard.js'), '');
+  writeFileSync(join(dir, 'post-tool.js'), '');
+}
+
 function fixture(): Fixture {
   const root = mkdtempSync(join(tmpdir(), 'robin-secret-install-'));
   const home = join(root, 'home');
@@ -51,6 +59,7 @@ function fixture(): Fixture {
   const distRoot = join(root, 'dist');
   mkdirSync(join(home, '.claude'), { recursive: true });
   mkdirSync(userData, { recursive: true });
+  builtDist(distRoot);
   const settingsPath = join(home, '.claude', 'settings.json');
   writeFileSync(
     settingsPath,
@@ -121,12 +130,35 @@ test('install twice: replaced true, no duplicate groups', () => {
   assert.equal(s.hooks.PreToolUse.length, 2);
 });
 
-test('install: warns when the compiled guard is missing, silent when present', () => {
+test('install: a missing compiled hook script skips and writes nothing (Ruling 16)', () => {
+  for (const script of ['guard.js', 'post-tool.js']) {
+    const f = fixture();
+    rmSync(join(f.distRoot, 'lib', 'secrets', 'hooks', script));
+    const before = readFileSync(f.settingsPath, 'utf8');
+    const r = installSecretHooks(opts(f));
+    assert.equal(r.skipped, 'dist-missing');
+    assert.equal(r.replaced, false);
+    assert.equal(r.message, 'run pnpm build first, then robin secret install');
+    assert.equal(readFileSync(f.settingsPath, 'utf8'), before);
+  }
+  const root = mkdtempSync(join(tmpdir(), 'robin-secret-install-'));
+  const r = installSecretHooks({
+    home: root,
+    userData: join(root, 'u'),
+    distRoot: join(root, 'no-dist'),
+    nodeBin: '/usr/bin/false',
+  });
+  assert.equal(r.skipped, 'dist-missing');
+  assert.equal(existsSync(join(root, '.claude')), false);
+});
+
+test('uninstall: a corrupt settings.json reports unreadable and is left alone', () => {
   const f = fixture();
-  assert.match(installSecretHooks(opts(f)).warning ?? '', /run pnpm build/);
-  mkdirSync(join(f.distRoot, 'lib', 'secrets', 'hooks'), { recursive: true });
-  writeFileSync(join(f.distRoot, 'lib', 'secrets', 'hooks', 'guard.js'), '');
-  assert.equal(installSecretHooks(opts(f)).warning, undefined);
+  writeFileSync(f.settingsPath, '{ not json');
+  const r = uninstallSecretHooks({ home: f.home });
+  assert.equal(r.unreadable, true);
+  assert.equal(r.replaced, false);
+  assert.equal(readFileSync(f.settingsPath, 'utf8'), '{ not json');
 });
 
 test('install: refuses paths with a quote, newline or $', () => {
@@ -149,6 +181,7 @@ test('install: corrupt settings.json is refused, not overwritten', () => {
 
 test('install: no settings.json yet creates it', () => {
   const root = mkdtempSync(join(tmpdir(), 'robin-secret-install-'));
+  builtDist(join(root, 'd'));
   const r = installSecretHooks({
     home: root,
     userData: join(root, 'u'),
@@ -242,6 +275,7 @@ test('guard command: a node failure becomes a blocking exit 2', () => {
 
 test('guard command: a missing guard.js with a window open blocks (exit 2)', () => {
   const f = fixture();
+  rmSync(join(f.distRoot, 'lib', 'secrets', 'hooks', 'guard.js'));
   mkdirSync(join(f.userData, 'state', 'runtime'), { recursive: true });
   writeFileSync(join(f.userData, 'state', 'runtime', 'secret-window.json'), '{}');
   const r = runCommand(f, '{}');
@@ -280,6 +314,19 @@ test('RULE_FILE_TEXT is a template: placeholder, no --confirmed, the new rules',
   assert.ok(RULE_FILE_TEXT.includes('Never use `robin secret exec` to send a key'));
   assert.ok(RULE_FILE_TEXT.includes('Never click, type into, or dismiss'));
   assert.ok(RULE_FILE_TEXT.includes('Bash timeout hint'));
+  assert.ok(
+    RULE_FILE_TEXT.includes(
+      'Output of a failed command is NOT redacted — never print env, .env files or secrets, even while debugging.',
+    ),
+  );
+  assert.ok(
+    RULE_FILE_TEXT.includes(
+      'Text shown as [REDACTED-SECRET] was hidden from you — never write it back into a file.',
+    ),
+  );
+  // N10: the dialog rule appears once.
+  assert.equal(RULE_FILE_TEXT.match(/dialog/g)?.length, 2); // pipe line names it, one never-touch rule
+  assert.ok(!RULE_FILE_TEXT.includes('never answer that dialog yourself'));
 });
 
 test('guard command: an edit carrying the redaction marker reaches node with no window', () => {

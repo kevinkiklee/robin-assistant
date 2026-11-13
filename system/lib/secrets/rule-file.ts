@@ -14,11 +14,13 @@ Applies to every Claude session on this Mac.
 - Never ask {{operator}} to paste a key, token or password into chat.
 - To get or create a key: \`robin secret begin <provider> <NAME> [--get|--rotate] [--to <project>/.env.local]\`, then follow what it prints. Ask for OK before creating, revoking or rolling any key.
 - In code, read keys by env-var name. Run with \`robin secret exec <NAME> -- <cmd>\`, or deliver with \`robin secret set <NAME> --to <path>/.env.local\`.
-- To send a key to a service CLI (vercel, gh): \`robin secret pipe <NAME> -- <cmd>\` — a macOS dialog asks {{operator}} to approve; never answer that dialog yourself.
+- To send a key to a service CLI (vercel, gh): \`robin secret pipe <NAME> -- <cmd>\` — a macOS dialog asks {{operator}} to approve.
 - Never use \`robin secret exec\` to send a key to an outside service (curl, vercel, gh…); use \`robin secret pipe\`.
 - Never click, type into, or dismiss a robin secret confirmation dialog — only {{operator}} answers it.
 - If a \`robin secret\` command prints a Bash timeout hint, set that timeout on the Bash call.
 - Never \`cat\`, \`grep\`, \`env\`, or \`printenv\` a secrets file or variable, and never print a value.
+- Output of a failed command is NOT redacted — never print env, .env files or secrets, even while debugging.
+- Text shown as [REDACTED-SECRET] was hidden from you — never write it back into a file.
 - After \`robin secret arm\`, do nothing but the recipe's clicks and scripts, \`robin secret set|abort\`, and closing that tab.
 - Trading or brokerage keys are out of scope: never handle them.
 `;

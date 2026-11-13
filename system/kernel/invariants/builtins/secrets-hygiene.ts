@@ -110,6 +110,37 @@ function loosePerms(
   return loose;
 }
 
+/** Problems with the installed secret hooks themselves (what `repair` reinstalls for). */
+function hookProblems(settings: Settings | 'corrupt' | null, sPath: string): string[] {
+  const problems: string[] = [];
+  if (settings === 'corrupt') return [`${sPath} is not valid JSON`];
+  for (const event of EVENTS) {
+    if (!settings || secretCommands(settings, event).length === 0) {
+      problems.push(`secret ${event} hook missing from ${sPath}`);
+    }
+  }
+  if (!settings) return problems;
+  const missing = new Set<string>();
+  for (const event of EVENTS) {
+    for (const cmd of secretCommands(settings, event)) {
+      const m = /ROBIN_USER_DATA_DIR='[^']*' '([^']+)' '([^']+\/lib\/secrets\/hooks\/[^']+)'/.exec(
+        cmd,
+      );
+      if (!m) {
+        problems.push(`unrecognized secret hook command in ${sPath} — run robin secret install`);
+        continue;
+      }
+      for (const p of [m[1], m[2]]) if (!existsSync(p)) missing.add(p);
+    }
+  }
+  for (const p of missing) {
+    problems.push(
+      `${p} referenced by the secret hooks does not exist (run pnpm build, then robin secret install)`,
+    );
+  }
+  return problems;
+}
+
 function isSetUp(opts: { userData: string }, home: string, settings: Settings | 'corrupt' | null) {
   if (existsSync(secretsPaths(opts.userData).vault)) return true;
   if (existsSync(join(home, '.claude', 'rules', 'secrets.md'))) return true;
@@ -151,12 +182,17 @@ export function secretsHygieneInvariant(opts: {
       if (!isSetUp(opts, home(), readSettings(settingsPath()))) return;
       const scratch: string[] = [];
       for (const f of loosePerms(opts.userData, scratch)) chmodSync(f, 0o600);
-      installSecretHooks({
-        home: home(),
-        userData: opts.userData,
-        nodeBin: opts.nodeBin,
-        distRoot: opts.distRoot ?? defaultDistRoot(),
-      });
+      // Rewrite settings.json only for a hook problem (never a corrupt file:
+      // install refuses that rather than wipe the user's settings).
+      const settings = readSettings(settingsPath());
+      if (settings !== 'corrupt' && hookProblems(settings, settingsPath()).length > 0) {
+        installSecretHooks({
+          home: home(),
+          userData: opts.userData,
+          nodeBin: opts.nodeBin,
+          distRoot: opts.distRoot ?? defaultDistRoot(),
+        });
+      }
       installRuleFile(home());
     },
   };
@@ -166,38 +202,7 @@ export function secretsHygieneInvariant(opts: {
     const sPath = settingsPath();
     const settings = readSettings(sPath);
     if (!isSetUp(opts, home(), settings)) return { ok: true, message: 'key manager not set up' };
-    if (settings === 'corrupt') {
-      problems.push(`${sPath} is not valid JSON`);
-    } else {
-      for (const event of EVENTS) {
-        if (!settings || secretCommands(settings, event).length === 0) {
-          problems.push(`secret ${event} hook missing from ${sPath}`);
-        }
-      }
-      if (settings) {
-        const missing = new Set<string>();
-        for (const event of EVENTS) {
-          for (const cmd of secretCommands(settings, event)) {
-            const m =
-              /ROBIN_USER_DATA_DIR='[^']*' '([^']+)' '([^']+\/lib\/secrets\/hooks\/[^']+)'/.exec(
-                cmd,
-              );
-            if (!m) {
-              problems.push(
-                `unrecognized secret hook command in ${sPath} — run robin secret install`,
-              );
-              continue;
-            }
-            for (const p of [m[1], m[2]]) if (!existsSync(p)) missing.add(p);
-          }
-        }
-        for (const p of missing) {
-          problems.push(
-            `${p} referenced by the secret hooks does not exist (run pnpm build, then robin secret install)`,
-          );
-        }
-      }
-    }
+    problems.push(...hookProblems(settings, sPath));
     const rule = join(home(), '.claude', 'rules', 'secrets.md');
     if (!existsSync(rule)) problems.push(`rule file ${rule} missing`);
 

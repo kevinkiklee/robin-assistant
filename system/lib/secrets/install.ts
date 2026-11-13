@@ -28,12 +28,18 @@ export interface SecretInstallOptions extends Partial<SecretHookPaths> {
   home?: string;
 }
 
+export const DIST_MISSING_MESSAGE = 'run pnpm build first, then robin secret install';
+
 export interface SecretInstallResult {
   path: string;
   /** True when a prior secret hook entry was replaced (install) or removed (uninstall). */
   replaced: boolean;
-  /** Set when the compiled guard is missing: the hooks are installed but can't run yet. */
-  warning?: string;
+  /** Install wrote nothing: a compiled hook script is missing (Ruling 16). */
+  skipped?: 'dist-missing';
+  /** Why it was skipped (with `skipped`). */
+  message?: string;
+  /** Uninstall: settings.json exists but isn't valid JSON, so nothing was removed. */
+  unreadable?: boolean;
 }
 
 interface HookEntry {
@@ -154,6 +160,13 @@ export function installSecretHooks(opts: SecretInstallOptions = {}): SecretInsta
   // Build both commands first so a refused path leaves settings.json untouched.
   const commands = { PreToolUse: secretGuardCommand(p), PostToolUse: secretPostToolCommand(p) };
   const path = settingsPathFor(home);
+  // A hook pointing at a missing script would fail closed on every call (the
+  // guard) or withhold nothing (post-tool), so install nothing until built.
+  for (const script of ['guard.js', 'post-tool.js']) {
+    if (!existsSync(join(p.distRoot, 'lib', 'secrets', 'hooks', script))) {
+      return { path, replaced: false, skipped: 'dist-missing', message: DIST_MISSING_MESSAGE };
+    }
+  }
   const settings = readSettings(path);
   if (!settings.hooks) settings.hooks = {};
   let replaced = false;
@@ -173,10 +186,7 @@ export function installSecretHooks(opts: SecretInstallOptions = {}): SecretInsta
     settings.hooks[event] = kept;
   }
   writeSettings(path, settings);
-  const guardJs = join(p.distRoot, 'lib', 'secrets', 'hooks', 'guard.js');
-  return existsSync(guardJs)
-    ? { path, replaced }
-    : { path, replaced, warning: `${guardJs} not found: run pnpm build` };
+  return { path, replaced };
 }
 
 /** Removes only the secret hook entries (a no-op when none are installed). */
@@ -187,7 +197,7 @@ export function uninstallSecretHooks(opts: { home?: string } = {}): SecretInstal
   try {
     settings = readSettings(path);
   } catch {
-    return { path, replaced: false };
+    return { path, replaced: false, unreadable: true };
   }
   if (!settings.hooks) return { path, replaced: false };
   let replaced = false;

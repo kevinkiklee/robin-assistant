@@ -216,10 +216,15 @@ topics: []
     const { installSecretHooks } = await import('../../lib/secrets/install.ts');
     const { installRuleFile } = await import('../../lib/secrets/rule-file.ts');
     const r = installSecretHooks({ userData });
-    const rule = installRuleFile();
-    console.log(
-      `  Secrets:  ${r.replaced ? 'updated' : 'installed'} PreToolUse + PostToolUse in ${r.path}, rule file ${rule}${r.warning ? ` (warning: ${r.warning})` : ''}`,
-    );
+    if (r.skipped) {
+      // Not built yet: install nothing (rule file included) and carry on.
+      console.log('  secret hooks: skipped — run pnpm build, then robin secret install');
+    } else {
+      const rule = installRuleFile();
+      console.log(
+        `  Secrets:  ${r.replaced ? 'updated' : 'installed'} PreToolUse + PostToolUse in ${r.path}, rule file ${rule}`,
+      );
+    }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.warn(`  Secrets:  skipped (${msg})`);
