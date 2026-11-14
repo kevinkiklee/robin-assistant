@@ -1,0 +1,5 @@
+# Verified false positives: fictional fixture values in the secrets tests
+# (`spk_test_…` and `FOO_TOKEN=abcdefghij0123456789`), not real credentials.
+# Ignore exact findings only — never broaden this to a rule or a path.
+719bb6037beb0f9e1ce1a718c6c3628db4ec5d18:system/lib/secrets/hooks/redact-policy.test.ts:generic-api-key:9
+9425ac16e2bc29ef0400430339c3f229c8fa568c:system/lib/secrets/store.test.ts:generic-api-key:103
