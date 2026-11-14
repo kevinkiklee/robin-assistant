@@ -3,7 +3,7 @@
 // navigate that tab, look up tool schemas, and run `robin secret set|abort`.
 // Other sessions keep working but may not touch that tab, the screen or the
 // clipboard. In every session, with or without a window, an edit may not write
-// the redaction marker into a secret or config file. Deny reasons never echo tool input: a
+// the redaction marker into anything but a code or doc file. Deny reasons never echo tool input: a
 // page script or command could carry anything.
 
 import { hashText } from '../clipboard.ts';
@@ -133,50 +133,62 @@ function containsMarker(v: unknown): boolean {
   return (Array.isArray(v) ? v : Object.values(v)).some(containsMarker);
 }
 
-// Secret- or config-like targets: where a redacted value read back from a file
-// could be written over the real one. Code and docs that merely mention the
-// marker literal (this module, its tests, design notes) stay editable.
-const CONFIG_EXTS = new Set([
-  'env',
-  'json',
-  'jsonc',
-  'yaml',
-  'yml',
-  'toml',
-  'ini',
-  'conf',
-  'cfg',
-  'properties',
-  'plist',
-  'xml',
-  'pem',
-  'key',
-  'npmrc',
+// Deny by default: a redacted value read back from a config or dotfile and
+// written over the real one is the failure this guards against, and config
+// formats are too many to list. Only code and doc files, which merely mention
+// the marker literal (this module, its tests, design notes), may carry it.
+const CODE_DOC_EXTS = new Set([
+  'ts',
+  'tsx',
+  'js',
+  'jsx',
+  'mjs',
+  'cjs',
+  'py',
+  'go',
+  'rs',
+  'rb',
+  'java',
+  'kt',
+  'swift',
+  'c',
+  'h',
+  'cc',
+  'cpp',
+  'cs',
+  'php',
+  'md',
+  'mdx',
+  'txt',
+  'html',
+  'css',
+  'scss',
 ]);
-const SECRET_NAME_RE = /secret|credential|token|\.netrc/i;
-const SHELL_RC = new Set(['.zshrc', '.bashrc', '.profile', '.zprofile', '.bash_profile']);
+const SECRET_NAME_RE = /secret|credential|token/i;
 
-/** True when an edit target looks secret- or config-like; a missing or non-string path counts (fail closed). */
-function isSecretLikeTarget(path: unknown): boolean {
-  if (typeof path !== 'string' || path === '') return true;
-  const base = path.split(/[\\/]/).pop() ?? '';
-  if (base === '') return true;
-  const lower = base.toLowerCase();
-  if (lower.startsWith('.env') || SHELL_RC.has(lower) || SECRET_NAME_RE.test(lower)) return true;
-  // After the last dot, so a dotfile like `.npmrc` yields `npmrc`.
+/**
+ * True when an edit target may carry the marker: a code or doc file (by
+ * extension, with a non-empty stem) whose name doesn't start with `.env` or
+ * mention a secret, credential or token. Extensionless files, dotfiles, shell
+ * scripts, config formats and a missing or non-string path are all refused.
+ */
+function isCodeOrDocTarget(path: unknown): boolean {
+  if (typeof path !== 'string') return false;
+  const lower = (path.split(/[\\/]/).pop() ?? '').toLowerCase();
   const dot = lower.lastIndexOf('.');
-  return dot >= 0 && CONFIG_EXTS.has(lower.slice(dot + 1));
+  if (dot <= 0 || !CODE_DOC_EXTS.has(lower.slice(dot + 1))) return false;
+  return !lower.startsWith('.env') && !SECRET_NAME_RE.test(lower);
 }
 
 /**
  * True for a Write / Edit / MultiEdit / NotebookEdit whose input carries the
- * redaction marker and whose target (file_path / notebook_path) is secret- or
- * config-like, or unknown.
+ * redaction marker, unless its target (file_path / notebook_path) is a code or
+ * doc file.
  */
 export function isMarkerEdit(input: HookInput): boolean {
   if (!EDIT_TOOLS.has(input.tool_name) || !containsMarker(input.tool_input)) return false;
   const ti = input.tool_input;
-  return isSecretLikeTarget(input.tool_name === 'NotebookEdit' ? ti.notebook_path : ti.file_path);
+  return !isCodeOrDocTarget(input.tool_name === 'NotebookEdit' ? ti.notebook_path : ti.file_path);
 }
 
 /**

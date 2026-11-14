@@ -421,3 +421,34 @@ test('marker: an edit with no or an unknown target path fails closed', () => {
     isMarkerDeny(decideGuard(call('s1', 'Write', { file_path: '', content: MARKER }), null, now)),
   );
 });
+
+// I1 rework: deny by default; only code and doc files may carry the marker.
+const markerWrite = (file_path: string) =>
+  call('s1', 'Write', { file_path, content: `x = "${MARKER}"\n` });
+test('marker: deny by default, allow only code and doc files', () => {
+  for (const p of [
+    '~/.ssh/config',
+    '/home/u/.kube/config',
+    '/home/u/.aws/config',
+    'infra/prod.tfvars',
+    'infra/main.hcl',
+    '/home/u/.zshenv',
+    '/home/u/.pgpass',
+    'scripts/setup.sh',
+    'src/tokenStore.ts',
+    'src/SecretPanel.tsx',
+    '/p/.env.example.md',
+    '/p/Makefile',
+    '/p/.md',
+  ]) {
+    assert.ok(isMarkerDeny(decideGuard(markerWrite(p), null, now)), p);
+  }
+  for (const p of [
+    'system/lib/secrets/hooks/redact-policy.ts',
+    'docs/notes.md',
+    'site/page.HTML',
+    'lib/x.rs',
+  ]) {
+    assert.deepEqual(decideGuard(markerWrite(p), null, now), ALLOW, p);
+  }
+});
