@@ -236,6 +236,35 @@ test('inspect script: a letters-only label that has the key shape is withheld', 
   assert.equal(r.els[1].label, 'Copy key', 'no token of "Copy key" has the key shape');
 });
 
+test('cloudflare locateCopy: masked token — anchors on Reveal, picks Copy to clipboard, not the curl Copy', () => {
+  // Layout recorded from the live roll dialog on 2026-11-13 (structure only).
+  const els: StubEl[] = [
+    { tag: 'span', rect: { left: 636, top: 374, width: 450, height: 15 }, text: '••••••••' },
+    { tag: 'button', rect: { left: 1086, top: 362, width: 39, height: 40 }, aria: 'Reveal value' },
+    {
+      tag: 'button',
+      rect: { left: 1125, top: 362, width: 39, height: 40 },
+      aria: 'Copy to clipboard',
+    },
+    { tag: 'button', rect: { left: 1109, top: 473, width: 46, height: 26 }, text: 'Copy' },
+  ];
+  assert.deepEqual(JSON.parse(JSON.stringify(runScript(cloudflare.locateCopy as string, els))), {
+    found: true,
+    x: 1145,
+    y: 382,
+  });
+});
+
+test('anchor fallback is off unless the recipe asks for it', () => {
+  const els: StubEl[] = [
+    { tag: 'button', rect: { left: 0, top: 0, width: 20, height: 20 }, aria: 'Reveal value' },
+    { tag: 'button', rect: { left: 30, top: 0, width: 20, height: 20 }, aria: 'Copy to clipboard' },
+  ];
+  assert.deepEqual(JSON.parse(JSON.stringify(runScript(linear.locateCopy as string, els))), {
+    found: false,
+  });
+});
+
 test('inspect script is hash-allowlisted with the recipe', () => {
   assert.ok(cloudflare.inspectReveal);
   assert.equal(scriptHashes(cloudflare).length, 3);

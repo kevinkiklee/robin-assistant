@@ -4,6 +4,13 @@ import type { Recipe } from './types.ts';
 export interface LocateOpts {
   buttonText: RegExp;
   nearValueShape: RegExp;
+  /**
+   * For dashboards that show the new key MASKED (nothing on the page has its
+   * shape): when no key-shaped holder exists, visible buttons matching this
+   * inside the top-most dialog act as the holder (e.g. Cloudflare's "Reveal
+   * value" sits right beside its "Copy to clipboard").
+   */
+  anchorButton?: RegExp;
 }
 
 /** A button further than this (CSS px) from every key holder is never returned. */
@@ -135,10 +142,12 @@ ${SCAN_HELPERS}
 export function buildLocateScript(opts: LocateOpts): string {
   const btn = opts.buttonText.toString();
   const val = opts.nearValueShape.toString();
+  const anchor = opts.anchorButton ? opts.anchorButton.toString() : 'null';
   return `(() => {
   try {
     const BTN = ${btn};
     const VAL = ${val};
+    const ANCHOR = ${anchor};
     const MAXD = ${MAX_HOLDER_DISTANCE};
 ${SCAN_HELPERS}
     const fields = q('input, textarea, code, pre').filter(({ el }) => {
@@ -147,11 +156,18 @@ ${SCAN_HELPERS}
     });
     const plain = q('*').filter(({ el }) => matches(ownText(el)));
     const seen = new Set();
-    const holders = [...fields, ...plain].filter((h) => {
+    let holders = [...fields, ...plain].filter((h) => {
       if (seen.has(h.el)) return false;
       seen.add(h.el);
       return visible(h.el);
     });
+    if (holders.length === 0 && ANCHOR) {
+      const dialogs = q('[role="dialog"], [role="alertdialog"], dialog[open]').filter(({ el }) => visible(el));
+      const top = dialogs.length ? dialogs[dialogs.length - 1].el : document.body;
+      holders = q('button, [role="button"]').filter(
+        ({ el }) => visible(el) && ANCHOR.test(labelOf(el)) && (el === top || top.contains(el)),
+      );
+    }
     if (holders.length === 0) {
       return { found: false };
     }
