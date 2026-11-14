@@ -674,7 +674,11 @@ test('set --wait timeout in get mode: no live-key warning', async () => {
   rawWindow(h);
   h.deps.now = () => new Date(NOW.getTime() - 1000); // window not yet expired
   assert.equal(await run(h, ['set', 'SPK_TEST_KEY', '--wait']), 1);
-  assert.match(h.output(), /No copy seen in 2 min; nothing saved\./);
+  assert.match(
+    h.output(),
+    /(No copy seen in 2 min\.|didn't look like a ebird key — copy only the key itself\.) Nothing saved\./,
+  );
+  assert.doesNotMatch(h.output(), /may be live/);
   assert.doesNotMatch(h.output(), /may be live/);
 });
 

@@ -43,11 +43,38 @@ test('takeFreshCopy: fails shape → reason shape', () => {
   assert.deepEqual(r, { ok: false, reason: 'shape' });
 });
 
-test('takeFreshCopy: strips one trailing newline only', () => {
-  const r = takeFreshCopy(fake([`${KEY}\n`]), hashText('old'), SHAPE);
-  assert.deepEqual(r, { ok: true, value: KEY });
-  const two = takeFreshCopy(fake([`${KEY}\n\n`]), hashText('old'), SHAPE);
-  assert.equal(two.ok, false);
+test('takeFreshCopy: drops surrounding whitespace from a manual selection', () => {
+  assert.deepEqual(takeFreshCopy(fake([`${KEY}\n`]), hashText('old'), SHAPE), {
+    ok: true,
+    value: KEY,
+  });
+  assert.deepEqual(takeFreshCopy(fake([`  ${KEY}\n\n`]), hashText('old'), SHAPE), {
+    ok: true,
+    value: KEY,
+  });
+});
+
+test('takeFreshCopy: a selected line with one key-shaped word yields that word', () => {
+  assert.deepEqual(takeFreshCopy(fake([`Your API key: ${KEY}`]), hashText('old'), SHAPE), {
+    ok: true,
+    value: KEY,
+  });
+});
+
+test('takeFreshCopy: two key-shaped words are ambiguous — refused as shape', () => {
+  const r = takeFreshCopy(fake([`${KEY} ${KEY}x`]), hashText('old'), SHAPE);
+  assert.deepEqual(r, { ok: false, reason: 'shape' });
+});
+
+test('waitForFreshCopy: reports shape when a wrong copy arrived and no key ever did', async () => {
+  const io = fake(['old', 'not a key at all']);
+  const r = await waitForFreshCopy(io, hashText('old'), SHAPE, {
+    timeoutMs: 30,
+    pollMs: 10,
+    sleep: async () => {},
+    message: 'm',
+  });
+  assert.deepEqual(r, { ok: false, reason: 'shape' });
 });
 
 test('waitForFreshCopy: resolves when the clipboard changes on the 3rd poll', async () => {

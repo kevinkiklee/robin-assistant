@@ -47,10 +47,16 @@ export function takeFreshCopy(io: ClipboardIO, sinceHash: string, shape: RegExp)
   const raw = io.read();
   if (raw === '') return { ok: false, reason: 'empty' };
   if (hashText(raw) === sinceHash) return { ok: false, reason: 'unchanged' };
-  const value = raw.endsWith('\n') ? raw.slice(0, -1) : raw;
+  // Keys never contain whitespace, so surrounding whitespace from a manual
+  // selection is dropped. If the selection caught extra words (a label, the
+  // whole line), use the one token that has the key's shape — only when exactly
+  // one does.
+  const value = raw.trim();
   if (value === '') return { ok: false, reason: 'empty' };
-  if (!shape.test(value)) return { ok: false, reason: 'shape' };
-  return { ok: true, value };
+  if (shape.test(value)) return { ok: true, value };
+  const hits = value.split(/[\s=:,;"'`()<>[\]{}]+/).filter((t) => t !== '' && shape.test(t));
+  if (hits.length === 1) return { ok: true, value: hits[0] };
+  return { ok: false, reason: 'shape' };
 }
 
 export async function waitForFreshCopy(
@@ -63,13 +69,16 @@ export async function waitForFreshCopy(
     sleep?: (ms: number) => Promise<void>;
     message: string;
   },
-): Promise<{ ok: true; value: string } | { ok: false; reason: 'timeout' }> {
+): Promise<{ ok: true; value: string } | { ok: false; reason: 'timeout' | 'shape' }> {
   const sleep = opts.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
   io.notify('Robin secret', opts.message);
+  let sawWrongShape = false;
   for (let elapsed = 0; elapsed <= opts.timeoutMs; elapsed += opts.pollMs) {
     const r = takeFreshCopy(io, sinceHash, shape);
     if (r.ok) return r;
+    if (r.reason === 'shape') sawWrongShape = true;
     await sleep(opts.pollMs);
   }
-  return { ok: false, reason: 'timeout' };
+  // A copy arrived but never looked like a key: say so instead of "no copy".
+  return { ok: false, reason: sawWrongShape ? 'shape' : 'timeout' };
 }

@@ -541,12 +541,13 @@ async function readValue(
         message: `Click Copy on the ${provider} tab`,
       });
       if (r.ok) return r.value;
-      if (!a.op) throw new CliExit(1, 'No copy seen in 2 min.');
-      if (a.op.mode === 'get') throw new CliExit(1, 'No copy seen in 2 min; nothing saved.');
-      throw new CliExit(
-        1,
-        `No copy seen in 2 min. ${liveKeyWarning(provider, name, opDate(a.op, now))}`,
-      );
+      const what =
+        r.reason === 'shape'
+          ? `A copy arrived in 2 min but it didn't look like a ${provider} key — copy only the key itself.`
+          : 'No copy seen in 2 min.';
+      if (!a.op) throw new CliExit(1, what);
+      if (a.op.mode === 'get') throw new CliExit(1, `${what} Nothing saved.`);
+      throw new CliExit(1, `${what} ${liveKeyWarning(provider, name, opDate(a.op, now))}`);
     }
   }
 }
