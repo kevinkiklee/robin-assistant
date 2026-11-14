@@ -82,20 +82,31 @@ interface StubEl {
   text?: string;
   value?: string;
   aria?: string;
+  title?: string;
   scrolled?: unknown;
 }
 function runScript(script: string, els: StubEl[]): unknown {
-  const wrap = (e: StubEl) => ({
-    value: e.value,
-    textContent: e.text ?? '',
-    getAttribute: (n: string) => (n === 'aria-label' ? (e.aria ?? null) : null),
-    getBoundingClientRect: () => e.rect,
-    scrollIntoView: (o: unknown) => {
-      e.scrolled = o;
-    },
-  });
+  const cache = new Map<StubEl, unknown>();
+  const wrap = (e: StubEl) => {
+    if (!cache.has(e)) {
+      cache.set(e, {
+        ...(e.value !== undefined ? { value: e.value } : {}),
+        textContent: e.text ?? '',
+        childNodes: e.text ? [{ nodeType: 3, textContent: e.text }] : [],
+        getAttribute: (n: string) =>
+          n === 'aria-label' ? (e.aria ?? null) : n === 'title' ? (e.title ?? null) : null,
+        getBoundingClientRect: () => e.rect,
+        scrollIntoView: (o: unknown) => {
+          e.scrolled = o;
+        },
+      });
+    }
+    return cache.get(e);
+  };
   const pick = (sel: string) =>
-    els.filter((e) => sel.split(',').some((s) => s.trim() === e.tag)).map(wrap);
+    sel === 'body *'
+      ? els.map(wrap)
+      : els.filter((e) => sel.split(',').some((s) => s.trim() === e.tag)).map(wrap);
   const ctx = {
     document: { querySelectorAll: pick },
     getComputedStyle: () => ({ visibility: 'visible', display: 'block' }),
@@ -130,6 +141,43 @@ test('locate script: {found:false} when no key-shaped holder', () => {
     { tag: 'button', rect: { left: 110, top: 0, width: 40, height: 20 }, text: 'Copy ID' },
   ];
   assert.deepEqual(JSON.parse(JSON.stringify(runScript(script, els))), { found: false });
+});
+
+test('locate script: key in a plain div, icon Copy button labelled by aria-label', () => {
+  const script = buildLocateScript({
+    buttonText: /copy/i,
+    nearValueShape: /^[A-Za-z0-9_-]{40,64}$/,
+  });
+  const els: StubEl[] = [
+    {
+      tag: 'div',
+      rect: { left: 0, top: 50, width: 300, height: 20 },
+      text: 'spk_test_FAKEcloudflare0123456789abcdefghijkl',
+    },
+    {
+      tag: 'button',
+      rect: { left: 310, top: 50, width: 20, height: 20 },
+      aria: 'Copy to clipboard',
+    },
+  ];
+  assert.deepEqual(JSON.parse(JSON.stringify(runScript(script, els))), {
+    found: true,
+    x: 320,
+    y: 60,
+  });
+});
+
+test('locate script: title attribute counts as a Copy label', () => {
+  const script = buildLocateScript({ buttonText: /copy/i, nearValueShape: /^lin_api_\w+$/ });
+  const els: StubEl[] = [
+    { tag: 'span', rect: { left: 0, top: 0, width: 100, height: 20 }, text: 'lin_api_FAKE123456' },
+    { tag: 'button', rect: { left: 110, top: 0, width: 20, height: 20 }, title: 'Copy' },
+  ];
+  assert.deepEqual(JSON.parse(JSON.stringify(runScript(script, els))), {
+    found: true,
+    x: 120,
+    y: 10,
+  });
 });
 
 test('locate script text splits on whitespace, = and : (escaped in the template)', () => {

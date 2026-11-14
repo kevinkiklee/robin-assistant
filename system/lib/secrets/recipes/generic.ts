@@ -11,8 +11,10 @@ export const MAX_HOLDER_DISTANCE = 400;
 
 /**
  * Self-contained page expression. Finds a visible button matching buttonText
- * (text or aria-label) within MAX_HOLDER_DISTANCE px of a visible input/code/pre
- * whose value or text (or any whitespace/=/:-separated token of it) matches
+ * (text, aria-label or title) within MAX_HOLDER_DISTANCE px of a visible key
+ * holder — an input/textarea/code/pre, or any element whose OWN text nodes
+ * (dashboards often render keys in a plain div/span) — whose value or text
+ * (or any whitespace/=/:-separated token of it) matches
  * nearValueShape (tested in-page, never returned), picks the nearest, scrolls it
  * into view instantly and evaluates to {found:false} or {found:true,x,y}.
  * With no matching holder there is NO fallback: it returns {found:false}, so a
@@ -36,16 +38,25 @@ export function buildLocateScript(opts: LocateOpts): string {
       const r = e.getBoundingClientRect();
       return [r.left + r.width / 2, r.top + r.height / 2];
     };
-    const holders = Array.from(document.querySelectorAll('input, code, pre')).filter((h) => {
-      if (!visible(h)) return false;
+    const matches = (t) => VAL.test(t) || t.split(/[\\s=:]+/).some((p) => p !== '' && VAL.test(p));
+    const ownText = (e) =>
+      Array.from(e.childNodes || [])
+        .filter((n) => n.nodeType === 3)
+        .map((n) => n.textContent || '')
+        .join('')
+        .trim();
+    const fields = Array.from(document.querySelectorAll('input, textarea, code, pre')).filter((h) => {
       const t = String(('value' in h && h.value) ? h.value : h.textContent || '').trim();
-      return VAL.test(t) || t.split(/[\\s=:]+/).some((p) => p !== '' && VAL.test(p));
+      return matches(t);
     });
+    const plain = Array.from(document.querySelectorAll('body *')).filter((h) => matches(ownText(h)));
+    const holders = Array.from(new Set([...fields, ...plain])).filter(visible);
     if (holders.length === 0) {
       return { found: false };
     }
     const buttons = Array.from(document.querySelectorAll('button, [role="button"]')).filter((b) => {
-      const label = (b.getAttribute('aria-label') || '') + ' ' + (b.textContent || '');
+      const label =
+        (b.getAttribute('aria-label') || '') + ' ' + (b.getAttribute('title') || '') + ' ' + (b.textContent || '');
       return visible(b) && BTN.test(label);
     });
     let best = null;
