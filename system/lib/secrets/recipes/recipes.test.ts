@@ -265,6 +265,21 @@ test('anchor fallback is off unless the recipe asks for it', () => {
   });
 });
 
+test('inspect script skips icon sprites and hidden elements', () => {
+  const script = buildInspectScript(/^lin_api_\w+$/);
+  const els: StubEl[] = [
+    { tag: 'svg', rect: { left: 0, top: 0, width: 0, height: 0 } },
+    { tag: 'path', rect: { left: 0, top: 0, width: 0, height: 0 } },
+    { tag: 'div', rect: { left: 0, top: 0, width: 0, height: 0 }, text: 'hidden' },
+    { tag: 'button', rect: { left: 10, top: 10, width: 20, height: 20 }, aria: 'Copy' },
+  ];
+  const r = JSON.parse(JSON.stringify(runScript(script, els)));
+  assert.deepEqual(
+    r.els.map((e: { tag: string }) => e.tag),
+    ['button'],
+  );
+});
+
 test('inspect script is hash-allowlisted with the recipe', () => {
   assert.ok(cloudflare.inspectReveal);
   assert.equal(scriptHashes(cloudflare).length, 3);

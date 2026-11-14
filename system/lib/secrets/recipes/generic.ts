@@ -93,7 +93,16 @@ ${SCAN_HELPERS}
     };
     const dialogs = q('[role="dialog"], [role="alertdialog"], dialog[open]').filter(({ el }) => visible(el));
     const top = dialogs.length ? dialogs[dialogs.length - 1] : { el: document.body, dx: 0, dy: 0 };
-    const inside = q('*').filter(({ el }) => el === top.el || top.el.contains(el) || (el.getRootNode && el.getRootNode().host && top.el.contains(el.getRootNode().host)));
+    const SKIP = /^(svg|path|symbol|defs|use|g|script|style|noscript|template|link|meta)$/i;
+    const inside = q('*').filter(
+      ({ el }) =>
+        !SKIP.test(el.tagName || '') &&
+        (!el.closest || !el.closest('svg')) &&
+        visible(el) &&
+        (el === top.el ||
+          top.el.contains(el) ||
+          (el.getRootNode && el.getRootNode().host && top.el.contains(el.getRootNode().host))),
+    );
     const all = q('*');
     let anyShape = false;
     for (const { el } of all) {
