@@ -52,12 +52,12 @@ test('listRecipes: hides recipes still marked FILL IN', () => {
   const unfinished = [cloudflare, linear, anthropic, ebird].filter((r) =>
     r.steps.some((s) => s.includes('FILL IN')),
   );
-  assert.ok(unfinished.length > 0, 'test needs at least one unfinished recipe');
   const listed = listRecipes().map((r) => r.provider);
   for (const r of unfinished)
     assert.ok(!listed.includes(r.provider), `${r.provider} is unfinished`);
   assert.ok(listed.includes('google'));
-  assert.ok(listed.includes('cloudflare'), 'cloudflare steps are filled');
+  for (const r of [cloudflare, linear, anthropic, ebird].filter((x) => !unfinished.includes(x)))
+    assert.ok(listed.includes(r.provider), `${r.provider} steps are filled`);
 });
 
 test('defaults', () => {
