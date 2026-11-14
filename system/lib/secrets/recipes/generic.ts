@@ -81,6 +81,7 @@ ${SCAN_HELPERS}
     const safe = (s) => {
       const t = String(s || '').replace(/\\s+/g, ' ').trim();
       if (t === '') return '';
+      if (matches(t)) return '<other>';
       return /^[A-Za-z][A-Za-z ,.'-]{0,29}$/.test(t) ? t : '<other>';
     };
     const dialogs = q('[role="dialog"], [role="alertdialog"], dialog[open]').filter(({ el }) => visible(el));

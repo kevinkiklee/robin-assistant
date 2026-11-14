@@ -225,6 +225,17 @@ test('inspect script: a label that is not letters-only is withheld', () => {
   assert.equal(r.els[0].label, '<other>');
 });
 
+test('inspect script: a letters-only label that has the key shape is withheld', () => {
+  const script = buildInspectScript(/^[A-Za-z]{10,}$/);
+  const els: StubEl[] = [
+    { tag: 'button', rect: { left: 0, top: 0, width: 20, height: 20 }, aria: 'abcdefghijkl' },
+    { tag: 'button', rect: { left: 30, top: 0, width: 20, height: 20 }, aria: 'Copy key' },
+  ];
+  const r = JSON.parse(JSON.stringify(runScript(script, els)));
+  assert.equal(r.els[0].label, '<other>');
+  assert.equal(r.els[1].label, 'Copy key', 'no token of "Copy key" has the key shape');
+});
+
 test('inspect script is hash-allowlisted with the recipe', () => {
   assert.ok(cloudflare.inspectReveal);
   assert.equal(scriptHashes(cloudflare).length, 3);
