@@ -347,6 +347,7 @@ export function beginLines(a: {
     ['precheck', recipe.precheck],
     ['locateReveal', recipe.locateReveal],
     ['locateCopy', recipe.locateCopy],
+    ['inspectReveal', recipe.inspectReveal],
   ];
   for (const [label, text] of scripts) {
     if (text === undefined) continue;

@@ -7,7 +7,7 @@ import vm from 'node:vm';
 import { anthropic } from './anthropic.ts';
 import { cloudflare } from './cloudflare.ts';
 import { ebird } from './ebird.ts';
-import { buildLocateScript, scriptHashes } from './generic.ts';
+import { buildInspectScript, buildLocateScript, scriptHashes } from './generic.ts';
 import { google, googleIntegrationFor } from './google.ts';
 import { listRecipes } from './index.ts';
 import { linear } from './linear.ts';
@@ -34,7 +34,7 @@ test('buildLocateScript: script text never references innerText/value in its ret
 
 test('scriptHashes: stable across calls', () => {
   assert.deepEqual(scriptHashes(linear), scriptHashes(linear));
-  assert.equal(scriptHashes(linear).length, 2);
+  assert.equal(scriptHashes(linear).length, 3); // locateReveal, locateCopy, inspectReveal
   assert.match(scriptHashes(linear)[0], /^[0-9a-f]{64}$/);
 });
 
@@ -92,10 +92,12 @@ function runScript(script: string, els: StubEl[]): unknown {
       cache.set(e, {
         ...(e.value !== undefined ? { value: e.value } : {}),
         textContent: e.text ?? '',
+        tagName: e.tag.toUpperCase(),
         childNodes: e.text ? [{ nodeType: 3, textContent: e.text }] : [],
         getAttribute: (n: string) =>
           n === 'aria-label' ? (e.aria ?? null) : n === 'title' ? (e.title ?? null) : null,
         getBoundingClientRect: () => e.rect,
+        getRootNode: () => ({}),
         scrollIntoView: (o: unknown) => {
           e.scrolled = o;
         },
@@ -104,11 +106,12 @@ function runScript(script: string, els: StubEl[]): unknown {
     return cache.get(e);
   };
   const pick = (sel: string) =>
-    sel === 'body *'
+    sel === '*'
       ? els.map(wrap)
       : els.filter((e) => sel.split(',').some((s) => s.trim() === e.tag)).map(wrap);
+  const body = { contains: () => true };
   const ctx = {
-    document: { querySelectorAll: pick },
+    document: { querySelectorAll: pick, body },
     getComputedStyle: () => ({ visibility: 'visible', display: 'block' }),
   };
   return vm.runInNewContext(script, ctx);
@@ -178,6 +181,53 @@ test('locate script: title attribute counts as a Copy label', () => {
     x: 120,
     y: 10,
   });
+});
+
+test('inspect script: structure only — never the key, never page text', () => {
+  const fake = 'spk_test_FAKEcloudflare0123456789abcdefghijkl';
+  const script = buildInspectScript(/^[A-Za-z0-9_-]{40,64}$/);
+  const els: StubEl[] = [
+    { tag: 'div', rect: { left: 0, top: 50, width: 300, height: 20 }, text: fake },
+    {
+      tag: 'span',
+      rect: { left: 0, top: 80, width: 300, height: 20 },
+      text: 'Keep it somewhere safe 42',
+    },
+    {
+      tag: 'button',
+      rect: { left: 310, top: 50, width: 20, height: 20 },
+      aria: 'Copy to clipboard',
+    },
+  ];
+  const r = JSON.parse(JSON.stringify(runScript(script, els)));
+  const out = JSON.stringify(r);
+  assert.equal(r.anyShape, true);
+  assert.ok(!out.includes(fake), 'key leaked');
+  assert.ok(!out.includes('FAKEcloud'), 'key fragment leaked');
+  assert.ok(!out.includes('somewhere'), 'page text leaked');
+  const btn = r.els.find((e: { tag: string }) => e.tag === 'button');
+  assert.equal(btn.label, 'Copy to clipboard');
+  const div = r.els.find((e: { tag: string }) => e.tag === 'div');
+  assert.equal(div.ownShape, true);
+  assert.equal(div.ownLen, fake.length);
+});
+
+test('inspect script: a label that is not letters-only is withheld', () => {
+  const script = buildInspectScript(/^[A-Za-z0-9_-]{40,64}$/);
+  const els: StubEl[] = [
+    {
+      tag: 'button',
+      rect: { left: 0, top: 0, width: 20, height: 20 },
+      aria: 'copy spk_test_FAKE123',
+    },
+  ];
+  const r = JSON.parse(JSON.stringify(runScript(script, els)));
+  assert.equal(r.els[0].label, '<other>');
+});
+
+test('inspect script is hash-allowlisted with the recipe', () => {
+  assert.ok(cloudflare.inspectReveal);
+  assert.equal(scriptHashes(cloudflare).length, 3);
 });
 
 test('locate script text splits on whitespace, = and : (escaped in the template)', () => {
